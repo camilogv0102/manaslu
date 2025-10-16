@@ -232,54 +232,23 @@ if (!function_exists('manaslu_checkout_terms_markup')) {
     }
 }
 
-if (!function_exists('manaslu_checkout_render_payment_with_terms')) {
+if (!function_exists('manaslu_checkout_prepend_terms_to_privacy_text')) {
     /**
-     * Renderiza el bloque de pago nativo añadiendo el checkbox antes del texto legal.
+     * Inserta el checkbox de aceptación antes del texto legal del checkout.
      */
-    function manaslu_checkout_render_payment_with_terms(): void
+    function manaslu_checkout_prepend_terms_to_privacy_text(string $text): string
     {
-        if (!function_exists('wc_get_template') || !function_exists('WC')) {
-            return;
-        }
-
-        $checkout = WC()->checkout();
-        if (!$checkout) {
-            return;
-        }
-
-        ob_start();
-        wc_get_template('checkout/payment.php', ['checkout' => $checkout]);
-        $payment_html = (string) ob_get_clean();
-        if ($payment_html === '') {
-            echo $payment_html;
-            return;
-        }
-
         $terms_html = manaslu_checkout_terms_markup();
 
-        if ($terms_html !== '' && strpos($payment_html, 'name="mv_accept_terms"') === false) {
-            if (preg_match('/<div class="woocommerce-privacy-policy-text[^>]*>/', $payment_html, $matches)) {
-                $payment_html = preg_replace(
-                    '/<div class="woocommerce-privacy-policy-text[^>]*>/',
-                    $terms_html . $matches[0],
-                    $payment_html,
-                    1
-                );
-            } else {
-                $payment_html = str_replace(
-                    '<div class="form-row place-order">',
-                    '<div class="form-row place-order">' . $terms_html,
-                    $payment_html
-                );
-            }
+        if ($terms_html === '' || strpos($text, 'name="mv_accept_terms"') !== false) {
+            return $text;
         }
 
-        echo $payment_html;
+        return $terms_html . $text;
     }
 }
 
-remove_action('woocommerce_checkout_order_review', 'woocommerce_checkout_payment', 20);
-add_action('woocommerce_checkout_order_review', 'manaslu_checkout_render_payment_with_terms', 20);
+add_filter('woocommerce_checkout_privacy_policy_text', 'manaslu_checkout_prepend_terms_to_privacy_text', 5);
 
 $is_user_logged_in = is_user_logged_in();
 
