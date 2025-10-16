@@ -251,8 +251,9 @@ add_filter('use_block_editor_for_post_type', function ($use, $type) {
  * ============================================================ */
 add_action('add_meta_boxes', function(){
     add_meta_box('extras_asignados_box', __('Extras asignados', 'manaslu'), function($post){
+        $meta_exists = metadata_exists('post', $post->ID, 'extras_asignados');
         $selected = get_post_meta($post->ID, 'extras_asignados', true);
-        $selected = is_array($selected) ? $selected : [];
+        $selected = is_array($selected) ? array_map('intval', $selected) : [];
         $extras = get_posts([
             'post_type'      => 'extra',
             'posts_per_page' => -1,
@@ -260,6 +261,9 @@ add_action('add_meta_boxes', function(){
             'orderby'        => 'title',
             'order'          => 'ASC',
         ]);
+        if (!$meta_exists) {
+            $selected = array_map('intval', wp_list_pluck($extras, 'ID'));
+        }
         echo '<p>'.__('Selecciona los extras asociados a este producto. Luego, en la pestaña “Extras”, podrás fijar sus precios por producto (y si usas fechas, el plugin Viajes permite poner precio por fecha).', 'manaslu').'</p><ul style="margin:0;padding:0">';
         foreach ($extras as $e) {
             $chk = in_array($e->ID, $selected, true) ? 'checked' : '';
@@ -275,6 +279,27 @@ add_action('save_post_product', function($post_id){
         update_post_meta($post_id, 'extras_asignados', array_map('intval', $_POST['extras_asignados']));
     } else {
         delete_post_meta($post_id, 'extras_asignados');
+    }
+});
+
+// Auto assign freshly published extras to all products so they start checked
+add_action('publish_extra', function($extra_id){
+    if (wp_is_post_revision($extra_id)) return;
+    $products = get_posts([
+        'post_type'      => 'product',
+        'posts_per_page' => -1,
+        'post_status'    => ['publish', 'pending', 'draft', 'future'],
+        'fields'         => 'ids',
+    ]);
+    if (empty($products)) return;
+    $extra_id = (int)$extra_id;
+    foreach ($products as $pid) {
+        $assigned = get_post_meta($pid, 'extras_asignados', true);
+        $assigned = is_array($assigned) ? array_map('intval', $assigned) : [];
+        if (!in_array($extra_id, $assigned, true)) {
+            $assigned[] = $extra_id;
+            update_post_meta($pid, 'extras_asignados', $assigned);
+        }
     }
 });
 
