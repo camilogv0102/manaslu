@@ -452,10 +452,67 @@ $inline_styles = trim(<<<'CSS'
 .woocommerce-checkout-review-order-table {
     width: 100%;
     margin-bottom: 1.5rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #ffffff;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
 }
-.woocommerce-checkout-review-order-table th,
-.woocommerce-checkout-review-order-table td {
-    padding: 0.6rem 0;
+.woocommerce-checkout-review-order-table thead th {
+    padding: 0.9rem 1.2rem;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: #475569;
+    background: #f1f5f9;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+}
+.woocommerce-checkout-review-order-table tbody td,
+.woocommerce-checkout-review-order-table tfoot th,
+.woocommerce-checkout-review-order-table tfoot td {
+    padding: 1rem 1.2rem;
+    font-size: 0.95rem;
+    color: #0f172a;
+}
+.woocommerce-checkout-review-order-table tbody tr + tr td {
+    border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+.woocommerce-checkout-review-order-table .product-name {
+    font-weight: 600;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.woocommerce-checkout-review-order-table .product-quantity {
+    font-weight: 700;
+    color: #1d4ed8;
+}
+.woocommerce-checkout-review-order-table .variation {
+    margin: 0;
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: #475569;
+}
+.woocommerce-checkout-review-order-table .variation dt {
+    font-weight: 600;
+}
+.woocommerce-checkout-review-order-table .variation dd {
+    margin: 0;
+}
+.woocommerce-checkout-review-order-table .variation dd p {
+    margin: 0;
+}
+.woocommerce-checkout-review-order-table tfoot tr {
+    background: #f8fafc;
+}
+.woocommerce-checkout-review-order-table .order-total th,
+.woocommerce-checkout-review-order-table .order-total td {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e293b;
 }
 #payment.woocommerce-checkout-payment {
     background-color: #f8fafc;
