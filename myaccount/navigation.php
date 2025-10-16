@@ -11,6 +11,10 @@ defined('ABSPATH') || exit;
 
 $menu_items = wc_get_account_menu_items();
 unset($menu_items['downloads']);
+
+if (isset($menu_items['orders'])) {
+    $menu_items['orders'] = __('Reservas', 'manaslu');
+}
 ?>
 <nav class="mva-nav" aria-label="<?php esc_attr_e('Navegación del área personal', 'manaslu'); ?>">
     <button class="mva-nav__toggle" type="button" data-mva-toggle>
