@@ -212,6 +212,17 @@ $inline_styles = trim(<<<'CSS'
     flex-direction: column;
     gap: 2rem;
 }
+.screen-reader-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
 .manaslu-checkout-summary {
     display: flex;
     flex-direction: column;
@@ -392,11 +403,6 @@ $inline_styles = trim(<<<'CSS'
     border-radius: 4px;
     border: 1px solid #94a3b8;
 }
-.mvcf-actions {
-    margin-top: 0.5rem;
-    display: flex;
-    justify-content: flex-end;
-}
 .mvcf-summary-card {
     background: #f8fafc;
     border-radius: 14px;
@@ -491,9 +497,6 @@ $inline_styles = trim(<<<'CSS'
     }
     .mvcf-grid {
         grid-template-columns: 1fr;
-    }
-    .mvcf-actions {
-        justify-content: stretch;
     }
     #payment.woocommerce-checkout-payment #place_order {
         width: 100%;
@@ -848,17 +851,16 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
                 </div>
             </section>
 
-            <div class="mvcf-actions">
-                <button type="submit" class="mvcf-button mvcf-button--primary">
-                    <?php echo esc_html__('Confirmar reserva', 'manaslu'); ?>
-                </button>
-            </div>
-
             <?php do_action('woocommerce_checkout_after_customer_details'); ?>
         </div>
 
         <aside class="manaslu-checkout-summary">
             <h2><?php echo esc_html__('Resumen del pedido', 'manaslu'); ?></h2>
+
+            <?php do_action('woocommerce_checkout_before_order_review_heading'); ?>
+            <h3 id="order_review_heading" class="screen-reader-text">
+                <?php esc_html_e('Tu pedido', 'woocommerce'); ?>
+            </h3>
 
             <div class="mvcf-summary-card">
                 <div class="mvcf-summary-block">
@@ -963,7 +965,7 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
             <div id="order_review" class="woocommerce-checkout-review-order">
                 <?php do_action('woocommerce_checkout_before_order_review'); ?>
                 <?php add_filter('woocommerce_order_button_text', 'manaslu_checkout_order_button_text', 10, 0); ?>
-                <?php woocommerce_order_review(); ?>
+                <?php do_action('woocommerce_checkout_order_review'); ?>
                 <?php remove_filter('woocommerce_order_button_text', 'manaslu_checkout_order_button_text', 10); ?>
                 <?php do_action('woocommerce_checkout_after_order_review'); ?>
             </div>
