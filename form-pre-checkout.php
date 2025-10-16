@@ -89,6 +89,9 @@ if (!function_exists('mv_pre_checkout_output_styles')) {
                 line-height: 1.45;
                 opacity: 0.85;
             }
+            .mv-pre-checkout-view:not(.is-active) {
+                display: none;
+            }
             .mv-pre-checkout-form {
                 display: grid;
                 gap: 14px;
@@ -203,18 +206,19 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
                 'genericError' => __('No se pudo crear la cuenta. Intenta nuevamente.', 'manaslu'),
                 'loading'      => __('Creando cuenta…', 'manaslu'),
                 'success'      => __('Cuenta creada correctamente. Redirigiendo…', 'manaslu'),
+                'invalidCredentials' => __('Las credenciales no son válidas. Verifica tu correo y clave.', 'manaslu'),
+                'loginLoading'       => __('Iniciando sesión…', 'manaslu'),
+                'loginSuccess'       => __('Inicio de sesión correcto. Redirigiendo…', 'manaslu'),
             ],
         ];
 
         $settings_json = wp_json_encode($settings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
-        $login_hint = sprintf(
-            /* translators: %s: my account url */
-            __('¿Ya tienes cuenta? <a href="%s">Inicia sesión</a>.', 'manaslu'),
-            esc_url($login_url)
-        );
+        $register_hint = __( '¿Ya tienes cuenta? <a href="#" data-mv-pre-switch="login">Inicia sesión</a>.', 'manaslu' );
+        $register_hint = wp_kses($register_hint, ['a' => ['href' => [], 'data-mv-pre-switch' => []]]);
 
-        $login_hint = wp_kses($login_hint, ['a' => ['href' => []]]);
+        $login_hint = __( '¿No tienes cuenta? <a href="#" data-mv-pre-switch="register">Crea una aquí</a>.', 'manaslu' );
+        $login_hint = wp_kses($login_hint, ['a' => ['href' => [], 'data-mv-pre-switch' => []]]);
         ?>
         <div
             id="mv-pre-checkout-modal"
@@ -227,11 +231,40 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
             <div class="mv-pre-checkout-modal__backdrop" data-mv-pre-close></div>
             <div class="mv-pre-checkout-modal__dialog">
                 <button type="button" class="mv-pre-checkout-close" data-mv-pre-close aria-label="<?php echo esc_attr__('Cerrar', 'manaslu'); ?>">&times;</button>
-                <h2 id="mv-pre-checkout-title" class="mv-pre-checkout-modal__title"><?php echo esc_html__('Crea tu cuenta para continuar', 'manaslu'); ?></h2>
-                <p class="mv-pre-checkout-modal__lead"><?php echo esc_html__('Necesitamos tu registro para finalizar la reserva del viaje.', 'manaslu'); ?></p>
+                <h2
+                    id="mv-pre-checkout-title"
+                    class="mv-pre-checkout-modal__title mv-pre-checkout-view is-active"
+                    data-mv-pre-view="register"
+                >
+                    <?php echo esc_html__('Crea tu cuenta para continuar', 'manaslu'); ?>
+                </h2>
+                <h2
+                    id="mv-pre-checkout-title-login"
+                    class="mv-pre-checkout-modal__title mv-pre-checkout-view"
+                    data-mv-pre-view="login"
+                >
+                    <?php echo esc_html__('Inicia sesión para continuar', 'manaslu'); ?>
+                </h2>
+                <p
+                    class="mv-pre-checkout-modal__lead mv-pre-checkout-view is-active"
+                    data-mv-pre-view="register"
+                >
+                    <?php echo esc_html__('Necesitamos tu registro para finalizar la reserva del viaje.', 'manaslu'); ?>
+                </p>
+                <p
+                    class="mv-pre-checkout-modal__lead mv-pre-checkout-view"
+                    data-mv-pre-view="login"
+                >
+                    <?php echo esc_html__('Ingresa tus datos para continuar con tu compra.', 'manaslu'); ?>
+                </p>
                 <div class="mv-pre-checkout-feedback is-error" data-mv-pre-error></div>
                 <div class="mv-pre-checkout-feedback is-success" data-mv-pre-success></div>
-                <form class="mv-pre-checkout-form" data-mv-pre-form novalidate>
+                <form
+                    class="mv-pre-checkout-form mv-pre-checkout-view is-active"
+                    data-mv-pre-form="register"
+                    data-mv-pre-view="register"
+                    novalidate
+                >
                     <div>
                         <label for="mv-pre-checkout-name"><?php echo esc_html__('Nombre completo', 'manaslu'); ?></label>
                         <input type="text" id="mv-pre-checkout-name" name="name" autocomplete="name" required />
@@ -248,7 +281,26 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
                         <?php echo esc_html__('Crear cuenta y continuar', 'manaslu'); ?>
                     </button>
                 </form>
-                <p class="mv-pre-checkout-extra"><?php echo $login_hint; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></p>
+                <form
+                    class="mv-pre-checkout-form mv-pre-checkout-view"
+                    data-mv-pre-form="login"
+                    data-mv-pre-view="login"
+                    novalidate
+                >
+                    <div>
+                        <label for="mv-pre-checkout-login-email"><?php echo esc_html__('Correo electrónico', 'manaslu'); ?></label>
+                        <input type="email" id="mv-pre-checkout-login-email" name="email" autocomplete="email" required />
+                    </div>
+                    <div>
+                        <label for="mv-pre-checkout-login-password"><?php echo esc_html__('Clave', 'manaslu'); ?></label>
+                        <input type="password" id="mv-pre-checkout-login-password" name="password" autocomplete="current-password" required />
+                    </div>
+                    <button type="submit" class="mv-pre-checkout-submit" data-mv-pre-submit>
+                        <?php echo esc_html__('Iniciar sesión y continuar', 'manaslu'); ?>
+                    </button>
+                </form>
+                <p class="mv-pre-checkout-extra mv-pre-checkout-view is-active" data-mv-pre-view="register"><?php echo $register_hint; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></p>
+                <p class="mv-pre-checkout-extra mv-pre-checkout-view" data-mv-pre-view="login"><?php echo $login_hint; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></p>
             </div>
         </div>
         <script>
@@ -266,14 +318,24 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
                     return;
                 }
 
-                var form = modal.querySelector('[data-mv-pre-form]');
-                var submitBtn = modal.querySelector('[data-mv-pre-submit]');
+                var viewNodes = modal.querySelectorAll('[data-mv-pre-view]');
+                var forms = modal.querySelectorAll('[data-mv-pre-form]');
+                var switchNodes = modal.querySelectorAll('[data-mv-pre-switch]');
                 var errorBox = modal.querySelector('[data-mv-pre-error]');
                 var successBox = modal.querySelector('[data-mv-pre-success]');
                 var closeNodes = modal.querySelectorAll('[data-mv-pre-close]');
                 var isOpen = false;
                 var inflight = false;
                 var resumeAction = null;
+                var currentView = 'register';
+                var messages = settings.messages || {};
+
+                function getMessage(key, fallback) {
+                    if (Object.prototype.hasOwnProperty.call(messages, key)) {
+                        return messages[key];
+                    }
+                    return fallback || '';
+                }
 
                 function cleanUrl(url) {
                     if (!url) {
@@ -324,7 +386,7 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
                     if (!errorBox) {
                         return;
                     }
-                    errorBox.innerHTML = message || settings.messages.genericError || '';
+                    errorBox.innerHTML = message || getMessage('genericError');
                     errorBox.style.display = 'block';
                     if (successBox) {
                         successBox.style.display = 'none';
@@ -342,21 +404,61 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
                     }
                 }
 
-                function openModal(callback) {
-                    if (isOpen) {
-                        resumeAction = callback || null;
-                        return;
+                function focusFirstField() {
+                    var selector = currentView === 'login' ? '#mv-pre-checkout-login-email' : '#mv-pre-checkout-name';
+                    var firstInput = modal.querySelector(selector);
+                    if (firstInput) {
+                        setTimeout(function(){ firstInput.focus(); }, 50);
                     }
+                }
+
+                function setView(view) {
+                    if (view !== 'login') {
+                        view = 'register';
+                    }
+                    currentView = view;
+                    viewNodes.forEach(function(node){
+                        if (!node) {
+                            return;
+                        }
+                        var target = node.getAttribute('data-mv-pre-view');
+                        if (target === view) {
+                            node.classList.add('is-active');
+                            node.removeAttribute('hidden');
+                        } else {
+                            node.classList.remove('is-active');
+                            node.setAttribute('hidden', 'hidden');
+                            if (node.tagName === 'FORM' && typeof node.reset === 'function') {
+                                node.reset();
+                            }
+                        }
+                    });
+
+                    if (view === 'login') {
+                        modal.setAttribute('aria-labelledby', 'mv-pre-checkout-title-login');
+                    } else {
+                        modal.setAttribute('aria-labelledby', 'mv-pre-checkout-title');
+                    }
+
+                    if (isOpen) {
+                        focusFirstField();
+                    }
+                }
+
+                setView(currentView);
+
+                function openModal(callback, view) {
+                    setView(view || currentView || 'register');
                     resetFeedback();
                     resumeAction = callback || null;
+                    if (isOpen) {
+                        return;
+                    }
                     modal.classList.add('is-open');
                     document.body.classList.add('mv-pre-checkout-open');
                     modal.setAttribute('aria-hidden', 'false');
                     isOpen = true;
-                    var firstInput = modal.querySelector('#mv-pre-checkout-name');
-                    if (firstInput) {
-                        setTimeout(function(){ firstInput.focus(); }, 50);
-                    }
+                    focusFirstField();
                 }
 
                 function closeModal() {
@@ -369,6 +471,8 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
                     modal.setAttribute('aria-hidden', 'true');
                     isOpen = false;
                     resumeAction = null;
+                    setView('register');
+                    resetFeedback();
                 }
 
                 closeNodes.forEach(function(node){
@@ -390,18 +494,30 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
                     }
                 });
 
-                function finishRequest() {
+                switchNodes.forEach(function(node){
+                    node.addEventListener('click', function(event){
+                        event.preventDefault();
+                        if (inflight) {
+                            return;
+                        }
+                        var target = node.getAttribute('data-mv-pre-switch') === 'login' ? 'login' : 'register';
+                        resetFeedback();
+                        setView(target);
+                    });
+                });
+
+                function finishRequest(button) {
                     inflight = false;
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        if (submitBtn.dataset.originalText) {
-                            submitBtn.textContent = submitBtn.dataset.originalText;
+                    if (button) {
+                        button.disabled = false;
+                        if (button.dataset.originalText) {
+                            button.textContent = button.dataset.originalText;
                         }
                     }
                 }
 
-                function handleSuccess(redirectUrl) {
-                    showSuccess(settings.messages.success || '');
+                function handleSuccess(redirectUrl, successMessage) {
+                    showSuccess(successMessage || '');
                     settings.isLoggedIn = true;
                     window.mvPreCheckoutSettings = settings;
                     setTimeout(function(){
@@ -418,46 +534,59 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
                     }, 350);
                 }
 
-                if (form) {
-                    form.addEventListener('submit', function(event){
+                forms.forEach(function(activeForm){
+                    activeForm.addEventListener('submit', function(event){
                         event.preventDefault();
                         if (inflight) {
                             return;
                         }
                         resetFeedback();
 
-                        var formData = new FormData(form);
-                        var name = (formData.get('name') || '').toString().trim();
+                        var mode = activeForm.getAttribute('data-mv-pre-form');
+                        var submitButton = activeForm.querySelector('[data-mv-pre-submit]');
+                        var formData = new FormData(activeForm);
                         var email = (formData.get('email') || '').toString().trim();
                         var password = (formData.get('password') || '').toString();
 
-                        if (!name || !email || !password) {
-                            showError(settings.messages.required || '');
+                        if (!email || !password || (mode !== 'login' && !(formData.get('name') || '').toString().trim())) {
+                            showError(getMessage('required'));
                             return;
                         }
+
                         var atIndex = email.indexOf('@');
                         var dotIndex = email.lastIndexOf('.');
                         var isEmailValid = atIndex > 0 && dotIndex > atIndex + 1 && dotIndex < email.length - 1;
                         if (!isEmailValid) {
-                            showError(settings.messages.invalidEmail || '');
+                            showError(getMessage('invalidEmail'));
                             return;
                         }
-                        if (password.length < 6) {
-                            showError(settings.messages.weakPassword || '');
-                            return;
+
+                        if (mode !== 'login') {
+                            var name = (formData.get('name') || '').toString().trim();
+                            if (!name) {
+                                showError(getMessage('required'));
+                                return;
+                            }
+                            if (password.length < 6) {
+                                showError(getMessage('weakPassword'));
+                                return;
+                            }
                         }
 
                         inflight = true;
-                        if (submitBtn) {
-                            submitBtn.dataset.originalText = submitBtn.dataset.originalText || submitBtn.textContent;
-                            submitBtn.disabled = true;
-                            submitBtn.textContent = settings.messages.loading || submitBtn.textContent;
+                        if (submitButton) {
+                            submitButton.dataset.originalText = submitButton.dataset.originalText || submitButton.textContent;
+                            submitButton.disabled = true;
+                            var loadingKey = mode === 'login' ? 'loginLoading' : 'loading';
+                            submitButton.textContent = getMessage(loadingKey, submitButton.textContent);
                         }
 
                         var payload = new URLSearchParams();
-                        payload.append('action', 'mv_pre_checkout_register');
+                        payload.append('action', mode === 'login' ? 'mv_pre_checkout_login' : 'mv_pre_checkout_register');
                         payload.append('nonce', settings.nonce || '');
-                        payload.append('name', name);
+                        if (mode !== 'login') {
+                            payload.append('name', (formData.get('name') || '').toString().trim());
+                        }
                         payload.append('email', email);
                         payload.append('password', password);
 
@@ -478,20 +607,21 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
                             .then(function(body){
                                 if (body && body.success) {
                                     var redirectUrl = body.data && body.data.redirect ? body.data.redirect : '';
-                                    finishRequest();
-                                    handleSuccess(redirectUrl);
+                                    finishRequest(submitButton);
+                                    var successKey = mode === 'login' ? 'loginSuccess' : 'success';
+                                    handleSuccess(redirectUrl, getMessage(successKey));
                                     return;
                                 }
-                                var message = body && body.data && body.data.message ? body.data.message : (settings.messages.genericError || '');
-                                finishRequest();
+                                var message = body && body.data && body.data.message ? body.data.message : getMessage('genericError');
+                                finishRequest(submitButton);
                                 showError(message);
                             })
                             .catch(function(){
-                                finishRequest();
-                                showError(settings.messages.genericError || '');
+                                finishRequest(submitButton);
+                                showError(getMessage('genericError'));
                             });
                     });
-                }
+                });
 
                 function intercept(event, callback) {
                     event.preventDefault();
@@ -499,7 +629,7 @@ if (!function_exists('mv_pre_checkout_output_modal')) {
                     if (event.stopImmediatePropagation) {
                         event.stopImmediatePropagation();
                     }
-                    openModal(callback);
+                    openModal(callback, 'register');
                 }
 
                 function shouldBypass(node) {
@@ -699,6 +829,85 @@ if (!function_exists('mv_pre_checkout_handle_registration')) {
         }
 
         do_action('mv_pre_checkout_user_registered', $user_id);
+
+        $redirect = function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : home_url('/checkout/');
+
+        wp_send_json_success([
+            'redirect' => $redirect,
+        ]);
+    }
+}
+
+if (!function_exists('mv_pre_checkout_handle_login')) {
+    add_action('wp_ajax_nopriv_mv_pre_checkout_login', 'mv_pre_checkout_handle_login');
+    add_action('wp_ajax_mv_pre_checkout_login', 'mv_pre_checkout_handle_login');
+
+    function mv_pre_checkout_handle_login(): void
+    {
+        if (is_user_logged_in()) {
+            $redirect = function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : home_url('/checkout/');
+
+            wp_send_json_success([
+                'already_logged_in' => true,
+                'redirect'          => $redirect,
+            ]);
+        }
+
+        check_ajax_referer('mv_pre_checkout', 'nonce');
+
+        $raw_email = isset($_POST['email']) ? wp_unslash($_POST['email']) : '';
+        $raw_pass  = isset($_POST['password']) ? wp_unslash($_POST['password']) : '';
+
+        $email    = sanitize_email($raw_email);
+        $password = (string) $raw_pass;
+
+        if ($email === '' || $password === '') {
+            wp_send_json_error([
+                'message' => __('Por favor completa todos los campos.', 'manaslu'),
+            ]);
+        }
+
+        if (!is_email($email)) {
+            wp_send_json_error([
+                'message' => __('Introduce un correo electrónico válido.', 'manaslu'),
+            ]);
+        }
+
+        $creds = [
+            'user_login'    => $email,
+            'user_password' => $password,
+            'remember'      => true,
+        ];
+
+        $user = wp_signon($creds, false);
+
+        if ($user instanceof WP_Error) {
+            $user_data = get_user_by('email', $email);
+            if ($user_data instanceof WP_User) {
+                $creds['user_login'] = $user_data->user_login;
+                $user = wp_signon($creds, false);
+            }
+        }
+
+        if ($user instanceof WP_Error) {
+            wp_send_json_error([
+                'message' => __('Las credenciales no son válidas. Verifica tu correo y clave.', 'manaslu'),
+                'code'    => 'invalid_credentials',
+            ]);
+        }
+
+        if (!$user instanceof WP_User) {
+            wp_send_json_error([
+                'message' => __('Las credenciales no son válidas. Verifica tu correo y clave.', 'manaslu'),
+            ]);
+        }
+
+        if (function_exists('wc_set_customer_auth_cookie')) {
+            wc_set_customer_auth_cookie($user->ID);
+        } else {
+            wp_set_current_user($user->ID);
+            wp_set_auth_cookie($user->ID);
+        }
 
         $redirect = function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : home_url('/checkout/');
 
