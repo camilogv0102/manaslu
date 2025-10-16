@@ -156,6 +156,12 @@ if (!function_exists('mv_extra_should_be_included')){
         $assigned = is_array($assigned) ? array_map('intval', $assigned) : [];
         if (!in_array($extra_id, $assigned, true)) return 0;
 
+        $title = strtolower(trim(get_the_title($extra_id)));
+        $is_adult_label = ($title !== '' && strpos($title, 'adult') !== false);
+        if ($is_adult_label) {
+            return 1;
+        }
+
         $inc_prod = get_post_meta($product_id, 'mv_included_extras', true);
         $inc_prod = is_array($inc_prod) ? array_map('intval', $inc_prod) : [];
         if (!in_array($extra_id, $inc_prod, true)) return 0;
@@ -425,7 +431,7 @@ add_action('admin_footer', function(){
       var cur = (data.by_idx[idx] && data.by_idx[idx][e.id]) ? data.by_idx[idx][e.id] : {};
       var reg = (typeof cur.regular!== 'undefined') ? cur.regular : '';
       var sal = (typeof cur.sale   !== 'undefined') ? cur.sale    : '';
-      var inc = !!(cur.included);
+      var inc = isAdult(e.title) || !!cur.included;
       var pct = (typeof cur.pct !== 'undefined') ? cur.pct : '';
 
       var tr = '<tr>';

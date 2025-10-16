@@ -10,6 +10,279 @@
 
 defined('ABSPATH') || exit;
 
+if (!function_exists('manaslu_checkout_validate_required_inputs')) {
+    /**
+     * Valida los campos obligatorios del checkout (titular, viajeros y aceptación).
+     */
+    function manaslu_checkout_validate_required_inputs(): void
+    {
+        if (!function_exists('wc_add_notice')) {
+            return;
+        }
+
+        $required = [
+            'billing_first_name' => __('Nombre', 'manaslu'),
+            'billing_last_name'  => __('Apellidos', 'manaslu'),
+            'billing_document'   => __('DNI / Pasaporte', 'manaslu'),
+            'billing_phone'      => __('Teléfono', 'manaslu'),
+            'billing_email'      => __('Correo', 'manaslu'),
+            'billing_address_1'  => __('Dirección', 'manaslu'),
+            'billing_city'       => __('Ciudad', 'manaslu'),
+            'billing_postcode'   => __('Código postal', 'manaslu'),
+            'billing_state'      => __('Provincia', 'manaslu'),
+            'billing_country'    => __('País', 'manaslu'),
+        ];
+
+        foreach ($required as $field_key => $label) {
+            $value = isset($_POST[$field_key]) ? wp_unslash($_POST[$field_key]) : '';
+            if (!is_string($value)) {
+                $value = '';
+            }
+            if (trim($value) === '') {
+                wc_add_notice(
+                    sprintf(__('El campo "%s" es obligatorio.', 'manaslu'), $label),
+                    'error'
+                );
+            }
+        }
+
+        $email_raw = isset($_POST['billing_email']) ? wp_unslash($_POST['billing_email']) : '';
+        $email     = sanitize_email($email_raw);
+        if ($email_raw !== '' && $email === '') {
+            wc_add_notice(__('Introduce un correo electrónico válido.', 'manaslu'), 'error');
+        }
+
+        $traveler_total = isset($_POST['mv_travelers_total']) ? (int) $_POST['mv_travelers_total'] : 0;
+        $travelers_data = [];
+        if (isset($_POST['mv_travelers']) && is_array($_POST['mv_travelers'])) {
+            $travelers_data = $_POST['mv_travelers'];
+        }
+
+        $traveler_labels = [
+            'first_name' => __('Nombre', 'manaslu'),
+            'last_name'  => __('Apellidos', 'manaslu'),
+            'document'   => __('DNI / Pasaporte', 'manaslu'),
+        ];
+
+        if ($traveler_total > 0) {
+            for ($i = 0; $i < $traveler_total; $i++) {
+                $traveler = isset($travelers_data[$i]) && is_array($travelers_data[$i]) ? $travelers_data[$i] : [];
+                foreach ($traveler_labels as $key => $label) {
+                    $value = isset($traveler[$key]) ? wp_unslash($traveler[$key]) : '';
+                    if (!is_string($value)) {
+                        $value = '';
+                    }
+                    if (trim($value) === '') {
+                        wc_add_notice(
+                            sprintf(__('Completa %1$s para la persona %2$d.', 'manaslu'), $label, $i + 1),
+                            'error'
+                        );
+                    }
+                }
+            }
+        }
+
+        if (empty($_POST['mv_accept_terms'])) {
+            wc_add_notice(__('Debes aceptar las condiciones del viaje.', 'manaslu'), 'error');
+        }
+    }
+}
+add_action('woocommerce_checkout_process', 'manaslu_checkout_validate_required_inputs', 5);
+
+if (!function_exists('manaslu_checkout_handle_inline_registration')) {
+    /**
+     * Crea al usuario durante el checkout cuando no existe sesión.
+     */
+    function manaslu_checkout_handle_inline_registration(): void
+    {
+        if (is_user_logged_in() || !function_exists('wc_add_notice')) {
+            return;
+        }
+
+        $password_raw = isset($_POST['mv_account_password']) ? wp_unslash($_POST['mv_account_password']) : '';
+        if (!is_string($password_raw)) {
+            $password_raw = '';
+        }
+        $password = trim($password_raw);
+
+        $email_raw = isset($_POST['billing_email']) ? wp_unslash($_POST['billing_email']) : '';
+        $email     = sanitize_email($email_raw);
+
+        $min_length = (int) apply_filters('manaslu_inline_checkout_password_min_length', 6);
+
+        if ($password === '') {
+            wc_add_notice(__('Ingresa una clave para crear tu cuenta.', 'manaslu'), 'error');
+            return;
+        }
+
+        if ($min_length > 0 && strlen($password) < $min_length) {
+            wc_add_notice(
+                sprintf(__('La clave debe tener al menos %d caracteres.', 'manaslu'), $min_length),
+                'error'
+            );
+            return;
+        }
+
+        if ($email === '' || !is_email($email)) {
+            wc_add_notice(__('Introduce un correo electrónico válido.', 'manaslu'), 'error');
+            return;
+        }
+
+        if (email_exists($email)) {
+            wc_add_notice(__('Ya existe una cuenta con este correo. Inicia sesión para continuar.', 'manaslu'), 'error');
+            return;
+        }
+
+        if (wc_notice_count('error') > 0) {
+            return;
+        }
+
+        $first_name = isset($_POST['billing_first_name']) ? sanitize_text_field(wp_unslash($_POST['billing_first_name'])) : '';
+        $last_name  = isset($_POST['billing_last_name']) ? sanitize_text_field(wp_unslash($_POST['billing_last_name'])) : '';
+        $display    = trim($first_name . ' ' . $last_name);
+        if ($display === '') {
+            $display = $email;
+        }
+
+        if (function_exists('wc_create_new_customer')) {
+            $user_id = wc_create_new_customer($email, '', $password, [
+                'first_name'   => $first_name,
+                'last_name'    => $last_name,
+                'display_name' => $display,
+            ]);
+        } else {
+            $username = sanitize_user(current(explode('@', $email)) ?: $email, true);
+            if ($username === '') {
+                $username = $email;
+            }
+            $base_username = $username;
+            $suffix        = 1;
+            while (username_exists($username)) {
+                $username = $base_username . $suffix;
+                $suffix++;
+            }
+            $user_id = wp_create_user($username, $password, $email);
+            if (!is_wp_error($user_id)) {
+                wp_update_user([
+                    'ID'           => $user_id,
+                    'first_name'   => $first_name,
+                    'last_name'    => $last_name,
+                    'display_name' => $display,
+                ]);
+            }
+        }
+
+        if (is_wp_error($user_id)) {
+            $message = $user_id->get_error_message();
+            if (!$message) {
+                $message = __('No se pudo crear la cuenta. Intenta nuevamente.', 'manaslu');
+            }
+            wc_add_notice($message, 'error');
+            return;
+        }
+
+        if (!$user_id || !is_int($user_id)) {
+            wc_add_notice(__('No se pudo crear la cuenta. Intenta nuevamente.', 'manaslu'), 'error');
+            return;
+        }
+
+        // Guardar nombres para futuras reservas.
+        wp_update_user([
+            'ID'           => $user_id,
+            'first_name'   => $first_name,
+            'last_name'    => $last_name,
+            'display_name' => $display,
+        ]);
+
+        update_user_meta($user_id, 'first_name', $first_name);
+        update_user_meta($user_id, 'last_name', $last_name);
+
+        if (function_exists('wc_set_customer_auth_cookie')) {
+            wc_set_customer_auth_cookie($user_id);
+        } else {
+            wp_set_current_user($user_id);
+            wp_set_auth_cookie($user_id);
+        }
+
+        if (function_exists('WC') && class_exists('WC_Customer')) {
+            WC()->customer = new WC_Customer($user_id);
+        }
+    }
+}
+add_action('woocommerce_checkout_process', 'manaslu_checkout_handle_inline_registration', 20);
+
+if (!function_exists('manaslu_checkout_terms_markup')) {
+    /**
+     * Devuelve el marcado HTML del checkbox de aceptación.
+     */
+    function manaslu_checkout_terms_markup(): string
+    {
+        ob_start();
+        ?>
+        <section class="mvcf-section mvcf-section--terms" data-mv-terms>
+            <div class="mvcf-checkbox">
+                <label class="mvcf-checkbox-label">
+                    <input type="checkbox" name="mv_accept_terms" value="1" required />
+                    <span><?php echo esc_html__('Acepta las condiciones del viaje, políticas generales de cancelación y tratamiento de imágenes', 'manaslu'); ?></span>
+                </label>
+            </div>
+        </section>
+        <?php
+        return trim((string) ob_get_clean());
+    }
+}
+
+if (!function_exists('manaslu_checkout_render_payment_with_terms')) {
+    /**
+     * Renderiza el bloque de pago nativo añadiendo el checkbox antes del texto legal.
+     */
+    function manaslu_checkout_render_payment_with_terms(): void
+    {
+        if (!function_exists('wc_get_template') || !function_exists('WC')) {
+            return;
+        }
+
+        $checkout = WC()->checkout();
+        if (!$checkout) {
+            return;
+        }
+
+        ob_start();
+        wc_get_template('checkout/payment.php', ['checkout' => $checkout]);
+        $payment_html = (string) ob_get_clean();
+        if ($payment_html === '') {
+            echo $payment_html;
+            return;
+        }
+
+        $terms_html = manaslu_checkout_terms_markup();
+
+        if ($terms_html !== '' && strpos($payment_html, 'name="mv_accept_terms"') === false) {
+            if (preg_match('/<div class="woocommerce-privacy-policy-text[^>]*>/', $payment_html, $matches)) {
+                $payment_html = preg_replace(
+                    '/<div class="woocommerce-privacy-policy-text[^>]*>/',
+                    $terms_html . $matches[0],
+                    $payment_html,
+                    1
+                );
+            } else {
+                $payment_html = str_replace(
+                    '<div class="form-row place-order">',
+                    '<div class="form-row place-order">' . $terms_html,
+                    $payment_html
+                );
+            }
+        }
+
+        echo $payment_html;
+    }
+}
+
+remove_action('woocommerce_checkout_order_review', 'woocommerce_checkout_payment', 20);
+add_action('woocommerce_checkout_order_review', 'manaslu_checkout_render_payment_with_terms', 20);
+
+$is_user_logged_in = is_user_logged_in();
+
 $checkout = WC()->checkout();
 
 do_action('woocommerce_before_checkout_form', $checkout);
@@ -111,10 +384,6 @@ if (!function_exists('manaslu_checkout_render_traveler_card')) {
             ? __('Persona', 'manaslu')
             : sprintf($title_pattern, $display_index);
 
-        $remove_label = $is_template
-            ? __('Eliminar persona', 'manaslu')
-            : sprintf($remove_pattern, $display_index);
-
         ob_start();
         ?>
         <article class="mvcf-traveler-card" data-traveler>
@@ -126,15 +395,6 @@ if (!function_exists('manaslu_checkout_render_traveler_card')) {
                 >
                     <?php echo esc_html($title_text); ?>
                 </span>
-                <button
-                    type="button"
-                    class="mvcf-remove"
-                    data-remove-traveler
-                    data-remove-pattern="<?php echo esc_attr($remove_pattern); ?>"
-                    aria-label="<?php echo esc_attr($remove_label); ?>"
-                >
-                    <span aria-hidden="true">&times;</span>
-                </button>
             </header>
             <div class="mvcf-grid">
                 <?php foreach ($traveler_fields as $key => $config) : ?>
@@ -266,6 +526,12 @@ $inline_styles = trim(<<<'CSS'
     flex-direction: column;
     gap: 0.35rem;
 }
+.mvcf-field-note {
+    font-size: 0.8rem;
+    color: #64748b;
+    line-height: 1.4;
+    margin: 0.15rem 0 0;
+}
 .mvcf-field.is-full {
     grid-column: 1 / -1;
 }
@@ -297,6 +563,26 @@ $inline_styles = trim(<<<'CSS'
     flex-direction: column;
     gap: 0.75rem;
     margin-top: 1.5rem;
+}
+.mvcf-count-display {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.65rem;
+    background: #eef2ff;
+    border-radius: 999px;
+    padding: 0.6rem 1rem;
+    font-weight: 600;
+    color: #1e3a8a;
+    width: fit-content;
+}
+.mvcf-count-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.mvcf-count-note {
+    font-size: 0.85rem;
+    color: #475569;
 }
 .mvcf-count-controls {
     display: flex;
@@ -626,6 +912,23 @@ $inline_styles = trim(<<<'CSS'
 }
 #payment.woocommerce-checkout-payment .place-order {
     margin-top: 0.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+#payment.woocommerce-checkout-payment .place-order noscript {
+    order: 1;
+}
+#payment.woocommerce-checkout-payment .place-order .mvcf-section--terms {
+    order: 2;
+    margin: 0;
+}
+#payment.woocommerce-checkout-payment .place-order .woocommerce-privacy-policy-text,
+#payment.woocommerce-checkout-payment .place-order .woocommerce-terms-and-conditions-wrapper {
+    order: 3;
+}
+#payment.woocommerce-checkout-payment .place-order #place_order {
+    order: 4;
 }
 #payment.woocommerce-checkout-payment #place_order {
     width: 100%;
@@ -877,6 +1180,7 @@ $person_rows   = [];
 $extras_rows   = [];
 $seguro_block  = ['label' => '', 'total' => ''];
 $discount_rows = [];
+$cart_person_count = 0;
 
 if ($primary_item && isset($primary_item['data']) && is_object($primary_item['data']) && method_exists($primary_item['data'], 'get_name')) {
     $trip_name = $primary_item['data']->get_name();
@@ -888,7 +1192,7 @@ if (function_exists('manaslu_collect_summary_data')) {
         $trip_date = $summary_data['fecha']['label'];
     }
     if (isset($summary_data['personas_count'])) {
-        $person_count = max($summary_data['personas_count'], $person_count);
+        $cart_person_count = max(0, (int) $summary_data['personas_count']);
     }
     if (!empty($summary_data['personas']) && is_array($summary_data['personas'])) {
         $person_rows = $summary_data['personas'];
@@ -911,6 +1215,18 @@ if (function_exists('manaslu_collect_summary_data')) {
             'value' => $summary_data['pax_discount_total'],
         ];
     }
+}
+
+if ($cart_person_count > 0) {
+    $initial_travelers = $cart_person_count;
+    if ($initial_travelers < $min_travelers) {
+        $initial_travelers = $min_travelers;
+    }
+}
+
+$person_count = $cart_person_count > 0 ? $cart_person_count : $initial_travelers;
+if ($initial_travelers > $max_travelers) {
+    $max_travelers = $initial_travelers;
 }
 
 if (!function_exists('manaslu_checkout_order_button_text')) {
@@ -986,6 +1302,24 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
                                 ?>
                             />
                         </div>
+                        <?php if (!$is_user_logged_in && $key === 'billing_email') : ?>
+                            <div class="mvcf-field is-full mvcf-field--account-password">
+                                <label class="mvcf-field-label" for="mv_account_password">
+                                    <?php echo esc_html__('Clave para tu cuenta', 'manaslu'); ?>
+                                </label>
+                                <input
+                                    class="mvcf-input"
+                                    type="password"
+                                    id="mv_account_password"
+                                    name="mv_account_password"
+                                    autocomplete="new-password"
+                                    required
+                                />
+                                <p class="mvcf-field-note">
+                                    <?php echo esc_html__('La usarás para revisar tus reservas y futuras compras.', 'manaslu'); ?>
+                                </p>
+                            </div>
+                        <?php endif; ?>
                     <?php endforeach; ?>
                 </div>
             </section>
@@ -997,37 +1331,20 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
                 </header>
 
                 <div class="mvcf-traveler-count">
-                    <label class="mvcf-field-label" for="mv_travelers_total">
+                    <span class="mvcf-field-label">
                         <?php echo esc_html__('Número de personas', 'manaslu'); ?>
-                    </label>
-                    <div class="mvcf-count-controls" role="group" aria-label="<?php echo esc_attr__('Ajustar número de personas', 'manaslu'); ?>">
-                        <button
-                            type="button"
-                            class="mvcf-count-button"
-                            data-decrement-traveler
-                            aria-label="<?php echo esc_attr__('Reducir el número de personas', 'manaslu'); ?>"
-                        >
-                            <span aria-hidden="true">&minus;</span>
-                        </button>
-                        <input
-                            class="mvcf-input mvcf-input--number"
-                            type="number"
-                            id="mv_travelers_total"
-                            name="mv_travelers_total"
-                            value="<?php echo esc_attr($initial_travelers); ?>"
-                            min="<?php echo esc_attr($min_travelers); ?>"
-                            max="<?php echo esc_attr($max_travelers); ?>"
-                            data-traveler-count
-                        />
-                        <button
-                            type="button"
-                            class="mvcf-count-button"
-                            data-increment-traveler
-                            aria-label="<?php echo esc_attr__('Aumentar el número de personas', 'manaslu'); ?>"
-                        >
-                            <span aria-hidden="true">+</span>
-                        </button>
+                    </span>
+                    <div class="mvcf-count-display">
+                        <span class="mvcf-count-value"><?php echo esc_html($initial_travelers); ?></span>
+                        <span class="mvcf-count-note"><?php echo esc_html__('Personas añadidas en tu reserva', 'manaslu'); ?></span>
                     </div>
+                    <input
+                        type="hidden"
+                        id="mv_travelers_total"
+                        name="mv_travelers_total"
+                        value="<?php echo esc_attr($initial_travelers); ?>"
+                        data-traveler-count
+                    />
                 </div>
 
                 <div class="mvcf-travelers" data-travelers-wrapper>
@@ -1039,15 +1356,6 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
                 <template data-traveler-template>
                     <?php echo manaslu_checkout_render_traveler_card(0, $traveler_fields, $traveler_title_pattern, $remove_title_pattern, true); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                 </template>
-            </section>
-
-            <section class="mvcf-section">
-                <div class="mvcf-checkbox">
-                    <label class="mvcf-checkbox-label">
-                        <input type="checkbox" name="mv_accept_terms" value="1" required />
-                        <span><?php echo esc_html__('Acepta las condiciones del viaje, políticas generales de cancelación y tratamiento de imágenes', 'manaslu'); ?></span>
-                    </label>
-                </div>
             </section>
 
             <?php do_action('woocommerce_checkout_after_customer_details'); ?>
@@ -1089,7 +1397,7 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
                                 <li>
                                     <span>
                                         <span><?php echo esc_html($row['title'] . ' × ' . $row['qty']); ?></span>
-                                        <span><?php echo esc_html($row['total']); ?></span>
+                                        <span><?php echo wp_kses_post($row['total']); ?></span>
                                     </span>
                                 </li>
                             <?php endforeach; ?>
@@ -1108,7 +1416,7 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
                                 <li>
                                     <span>
                                         <span><?php echo esc_html($row['title'] . ' × ' . $row['qty']); ?></span>
-                                        <span><?php echo esc_html($row['total']); ?></span>
+                                        <span><?php echo wp_kses_post($row['total']); ?></span>
                                     </span>
                                 </li>
                             <?php endforeach; ?>
@@ -1127,7 +1435,7 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
                                 <li>
                                     <span>
                                         <span><?php echo esc_html($row['label']); ?></span>
-                                        <span><?php echo esc_html($row['value']); ?></span>
+                                        <span><?php echo wp_kses_post($row['value']); ?></span>
                                     </span>
                                 </li>
                             <?php endforeach; ?>
@@ -1153,7 +1461,7 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
                             <li>
                                 <span>
                                     <span><?php echo esc_html__('Total seguro', 'manaslu'); ?></span>
-                                    <span><?php echo esc_html($seguro_block['total']); ?></span>
+                                    <span><?php echo wp_kses_post($seguro_block['total']); ?></span>
                                 </span>
                             </li>
                         </ul>

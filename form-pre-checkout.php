@@ -15,6 +15,10 @@ if (!function_exists('mv_pre_checkout_should_activate')) {
      */
     function mv_pre_checkout_should_activate(): bool
     {
+        if (!apply_filters('mv_pre_checkout_enable_modal', false)) {
+            return false;
+        }
+
         if (is_admin() || wp_doing_ajax()) {
             return false;
         }
