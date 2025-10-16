@@ -304,6 +304,37 @@ $inline_styles = trim(<<<'CSS'
     gap: 0.75rem;
     flex-wrap: wrap;
 }
+.mvcf-count-button {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 1px solid rgba(30, 58, 138, 0.2);
+    background: #e0e7ff;
+    color: #1e3a8a;
+    font-size: 1.1rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease, color 0.15s ease;
+}
+.mvcf-count-button:hover {
+    background: #c7d2fe;
+    transform: translateY(-1px);
+}
+.mvcf-count-button:focus-visible {
+    outline: 3px solid rgba(251, 34, 64, 0.35);
+    outline-offset: 2px;
+}
+.mvcf-count-button:disabled,
+.mvcf-count-button[aria-disabled="true"] {
+    background: #e2e8f0;
+    color: #94a3b8;
+    border-color: rgba(148, 163, 184, 0.5);
+    cursor: not-allowed;
+    transform: none;
+}
 .mvcf-button {
     display: inline-flex;
     align-items: center;
@@ -317,13 +348,13 @@ $inline_styles = trim(<<<'CSS'
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .mvcf-button--primary {
-    background: linear-gradient(135deg, #1d4ed8, #1e40af);
+    background: #fb2240;
     color: #ffffff;
-    box-shadow: 0 10px 20px rgba(30, 64, 175, 0.25);
+    box-shadow: 0 10px 20px rgba(251, 34, 64, 0.25);
 }
 .mvcf-button--primary:hover {
     transform: translateY(-1px);
-    box-shadow: 0 14px 28px rgba(30, 64, 175, 0.28);
+    box-shadow: 0 14px 28px rgba(251, 34, 64, 0.28);
 }
 .mvcf-button--secondary {
     background: #e0e7ff;
@@ -601,14 +632,14 @@ $inline_styles = trim(<<<'CSS'
     border-radius: 999px;
     padding: 0.85rem 1.6rem;
     font-weight: 600;
-    background: linear-gradient(135deg, #1d4ed8, #1e40af);
+    background: #fb2240;
     color: #ffffff;
-    box-shadow: 0 10px 20px rgba(30, 64, 175, 0.25);
+    box-shadow: 0 10px 20px rgba(251, 34, 64, 0.25);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 #payment.woocommerce-checkout-payment #place_order:hover {
     transform: translateY(-1px);
-    box-shadow: 0 14px 28px rgba(30, 64, 175, 0.28);
+    box-shadow: 0 14px 28px rgba(251, 34, 64, 0.28);
 }
 @media (max-width: 768px) {
     .manaslu-checkout-form {
@@ -633,7 +664,8 @@ $inline_script = trim(<<<'JS'
         var wrapper = form.querySelector('[data-travelers-wrapper]');
         var template = form.querySelector('template[data-traveler-template]');
         var countInput = form.querySelector('[data-traveler-count]');
-        var addButton = form.querySelector('[data-add-traveler]');
+        var decrementButton = form.querySelector('[data-decrement-traveler]');
+        var incrementButton = form.querySelector('[data-increment-traveler]');
 
         if (!wrapper || !template || !template.content) {
             return;
@@ -651,6 +683,24 @@ $inline_script = trim(<<<'JS'
 
         function createTravelerCard() {
             return template.content.firstElementChild.cloneNode(true);
+        }
+
+        function updateCountControls(count) {
+            if (countInput) {
+                countInput.value = count;
+            }
+
+            if (decrementButton) {
+                var disableDecrease = count <= min;
+                decrementButton.disabled = disableDecrease;
+                decrementButton.setAttribute('aria-disabled', disableDecrease ? 'true' : 'false');
+            }
+
+            if (incrementButton) {
+                var disableIncrease = count >= max;
+                incrementButton.disabled = disableIncrease;
+                incrementButton.setAttribute('aria-disabled', disableIncrease ? 'true' : 'false');
+            }
         }
 
         function renumberCards() {
@@ -700,9 +750,7 @@ $inline_script = trim(<<<'JS'
                 });
             });
 
-            if (countInput) {
-                countInput.value = cards.length;
-            }
+            updateCountControls(cards.length);
         }
 
         function ensureCardCount(target) {
@@ -737,10 +785,18 @@ $inline_script = trim(<<<'JS'
             renumberCards();
         }
 
-        if (addButton) {
-            addButton.addEventListener('click', function (event) {
+        if (decrementButton) {
+            decrementButton.addEventListener('click', function (event) {
                 event.preventDefault();
-                var next = (parseInt(countInput.value, 10) || min) + 1;
+                var next = (parseInt(countInput && countInput.value, 10) || min) - 1;
+                ensureCardCount(next);
+            });
+        }
+
+        if (incrementButton) {
+            incrementButton.addEventListener('click', function (event) {
+                event.preventDefault();
+                var next = (parseInt(countInput && countInput.value, 10) || min) + 1;
                 ensureCardCount(next);
             });
         }
@@ -748,6 +804,13 @@ $inline_script = trim(<<<'JS'
         if (countInput) {
             countInput.addEventListener('change', function () {
                 ensureCardCount(countInput.value);
+            });
+            countInput.addEventListener('input', function () {
+                var value = countInput.value;
+                if (value === '') {
+                    return;
+                }
+                ensureCardCount(value);
             });
         }
 
@@ -937,7 +1000,15 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
                     <label class="mvcf-field-label" for="mv_travelers_total">
                         <?php echo esc_html__('Número de personas', 'manaslu'); ?>
                     </label>
-                    <div class="mvcf-count-controls">
+                    <div class="mvcf-count-controls" role="group" aria-label="<?php echo esc_attr__('Ajustar número de personas', 'manaslu'); ?>">
+                        <button
+                            type="button"
+                            class="mvcf-count-button"
+                            data-decrement-traveler
+                            aria-label="<?php echo esc_attr__('Reducir el número de personas', 'manaslu'); ?>"
+                        >
+                            <span aria-hidden="true">&minus;</span>
+                        </button>
                         <input
                             class="mvcf-input mvcf-input--number"
                             type="number"
@@ -948,8 +1019,13 @@ if (!function_exists('manaslu_checkout_order_button_text')) {
                             max="<?php echo esc_attr($max_travelers); ?>"
                             data-traveler-count
                         />
-                        <button type="button" class="mvcf-button mvcf-button--secondary" data-add-traveler>
-                            <?php echo esc_html__('Añadir persona', 'manaslu'); ?>
+                        <button
+                            type="button"
+                            class="mvcf-count-button"
+                            data-increment-traveler
+                            aria-label="<?php echo esc_attr__('Aumentar el número de personas', 'manaslu'); ?>"
+                        >
+                            <span aria-hidden="true">+</span>
                         </button>
                     </div>
                 </div>
