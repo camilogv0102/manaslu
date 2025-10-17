@@ -148,6 +148,11 @@ if (!function_exists('mv_extra_should_be_included')){
                 && isset($by_idx[$idx][$extra_id])
                 && !empty($by_idx[$idx][$extra_id]['included'])) {
                 $included = (int)$by_idx[$idx][$extra_id]['included'];
+                $title = strtolower(trim(get_the_title($extra_id)));
+                $is_adult_label = ($title !== '' && strpos($title, 'adult') !== false);
+                if ($is_adult_label) {
+                    return 0;
+                }
                 return $included > 0 ? $included : 1;
             }
         }
@@ -159,7 +164,7 @@ if (!function_exists('mv_extra_should_be_included')){
         $title = strtolower(trim(get_the_title($extra_id)));
         $is_adult_label = ($title !== '' && strpos($title, 'adult') !== false);
         if ($is_adult_label) {
-            return 1;
+            return 0;
         }
 
         $inc_prod = get_post_meta($product_id, 'mv_included_extras', true);
@@ -339,11 +344,24 @@ add_filter('woocommerce_product_data_tabs', function($tabs){
 
 add_action('admin_head', function(){ ?>
 <style>
-/* Asegura que los checkboxes 'Incluye' se vean en las pestañas de producto */
+/* ===== ELIMINAR PARA MOSTRAR INCLUYES ===== */
+#mv_extras_data table.widefat th:nth-child(4),
+#mv_extras_data table.widefat td:nth-child(4),
+#mv_fechas_data table.widefat th:nth-child(4),
+#mv_fechas_data table.widefat td:nth-child(4){
+  display:none !important;
+}
+
+.widefat thead tr th:nth-child(4){
+    display: none !important;
+}
 .woocommerce_options_panel input.mv-inc[type="checkbox"]{
-  display:inline-block !important;
-  width:auto; height:auto;
-  opacity:1 !important; visibility:visible !important;
+    display: none !important;
+}
+/* Oculta checkboxes "Incluye" en extras y repetidor de fechas */
+#mv_extras_data .mv-inc[type="checkbox"],
+#mv_fechas_data .mv-inc[type="checkbox"]{
+  display:none !important;
 }
 </style>
 <?php });
@@ -431,7 +449,7 @@ add_action('admin_footer', function(){
       var cur = (data.by_idx[idx] && data.by_idx[idx][e.id]) ? data.by_idx[idx][e.id] : {};
       var reg = (typeof cur.regular!== 'undefined') ? cur.regular : '';
       var sal = (typeof cur.sale   !== 'undefined') ? cur.sale    : '';
-      var inc = isAdult(e.title) || !!cur.included;
+      var inc = !!cur.included;
       var pct = (typeof cur.pct !== 'undefined') ? cur.pct : '';
 
       var tr = '<tr>';
@@ -521,6 +539,7 @@ add_action('admin_footer', function(){
 <style>
 #mv-sc-cat-sort{margin:0;padding:0;list-style:none}
 #mv-sc-cat-sort li{display:flex;align-items:center;gap:10px;padding:8px 10px;margin:0 0 6px;background:#fff;border:1px solid #dcdcdc;border-radius:6px;cursor:move}
+#mv-sc-cat-sort[data-fixed-order="1"] li{cursor:default}
 #mv-sc-cat-sort li .mv-sc-term-name{font-weight:600;flex:0 0 auto;min-width:140px}
 #mv-sc-cat-sort li .mv-sc-term-label{flex:1 1 auto}
 .mv-sc-actions{margin-top:10px}
@@ -529,6 +548,7 @@ add_action('admin_footer', function(){
 jQuery(function($){
     var $list = $('#mv-sc-cat-sort');
     if(!$list.length) return;
+    if ($list.data('fixed-order')) return;
 
     var $orderField = $('#mv_sc_cat_order_field');
     var $resetField = $('#mv_sc_cat_reset_field');
@@ -684,6 +704,9 @@ add_action('woocommerce_product_data_panels', function () {
 
     $terms_map = [];
     foreach ($assigned as $eid) {
+        if (function_exists('mv_is_seguro_extra') && mv_is_seguro_extra($eid)) {
+            continue;
+        }
         $terms = get_the_terms($eid, 'extra_category');
         if (!is_wp_error($terms) && $terms) {
             foreach ($terms as $term) {
@@ -693,70 +716,63 @@ add_action('woocommerce_product_data_panels', function () {
     }
 
     if (empty($terms_map)) {
-        echo '<p>'.esc_html__('Los extras asignados no tienen categorías disponibles.', 'manaslu').'</p>';
+        echo '<p>'.esc_html__('Los extras asignados no tienen categorías compatibles con el shortcode.', 'manaslu').'</p>';
         echo '</div></div>';
         return;
     }
 
-    $stored_order = get_post_meta($pid, 'mv_sc_extra_cat_order', true);
-    $stored_order = is_array($stored_order) ? array_values(array_map('absint', $stored_order)) : [];
-    $stored_labels = get_post_meta($pid, 'mv_sc_extra_cat_labels', true);
-    $stored_labels = is_array($stored_labels) ? $stored_labels : [];
+    $desired_config = [
+        [
+            'slugs' => ['personas'],
+            'label' => __('Personas', 'manaslu'),
+        ],
+        [
+            'slugs' => ['individual'],
+            'label' => __('Alojamiento', 'manaslu'),
+        ],
+        [
+            'slugs' => ['actividades'],
+            'label' => __('Actividades - Precio por persona', 'manaslu'),
+        ],
+        [
+            'slugs' => ['transfers', 'transfer'],
+            'label' => __('Transfer - Precio por persona', 'manaslu'),
+        ],
+    ];
 
-    $alphabetical_terms = $terms_map;
-    uasort($alphabetical_terms, function($a, $b){
-        return strcasecmp($a->name, $b->name);
-    });
-    $default_positions = [];
-    $default_index = 0;
-    foreach ($alphabetical_terms as $term_id => $term_obj) {
-        $default_positions[$term_id] = ++$default_index;
-    }
-
-    $terms_for_order = $terms_map;
     $ordered_terms = [];
-    if (!empty($stored_order)) {
-        foreach ($stored_order as $term_id) {
-            if (isset($terms_for_order[$term_id])) {
-                $ordered_terms[$term_id] = $terms_for_order[$term_id];
-                unset($terms_for_order[$term_id]);
+    foreach ($desired_config as $config) {
+        foreach ($config['slugs'] as $slug) {
+            foreach ($terms_map as $term_id => $term_obj) {
+                if ($term_obj->slug === $slug) {
+                    $ordered_terms[$term_id] = [
+                        'term'  => $term_obj,
+                        'label' => $config['label'],
+                    ];
+                    continue 2;
+                }
             }
         }
     }
 
-    if (!empty($terms_for_order)) {
-        uasort($terms_for_order, function($a, $b){
-            return strcasecmp($a->name, $b->name);
-        });
-        foreach ($terms_for_order as $term_id => $term_obj) {
-            $ordered_terms[$term_id] = $term_obj;
-        }
+    if (empty($ordered_terms)) {
+        echo '<p>'.esc_html__('Los extras asignados no pertenecen a las categorías predefinidas para el shortcode.', 'manaslu').'</p>';
+        echo '</div></div>';
+        return;
     }
 
-    $initial_order = implode(',', array_map('absint', array_keys($ordered_terms))); // may be empty string
+    echo '<p>'.esc_html__('El shortcode aplica un orden y etiquetas fijas para estas categorías.', 'manaslu').'</p>';
 
-    echo '<p>'.esc_html__('Arrastra para reordenar las categorías que se muestran en el Shortcode de extras y opcionalmente sobrescribe el título visible.', 'manaslu').'</p>';
-
-    echo '<ul id="mv-sc-cat-sort" class="mv-sc-cat-sortable">';
-    $position = 0;
-    foreach ($ordered_terms as $term_id => $term_obj) {
-        $position++;
-        $label_value = isset($stored_labels[$term_id]) ? sanitize_text_field($stored_labels[$term_id]) : '';
-        $default_pos = isset($default_positions[$term_id]) ? (int)$default_positions[$term_id] : $position;
-        echo '<li class="mv-sc-cat-item" data-term-id="'.esc_attr($term_id).'" data-default-position="'.esc_attr($default_pos).'">';
+    echo '<ul id="mv-sc-cat-sort" class="mv-sc-cat-sortable" data-fixed-order="1">';
+    foreach ($ordered_terms as $term_id => $data) {
+        $term_obj = $data['term'];
+        $label    = $data['label'];
+        echo '<li class="mv-sc-cat-item" data-term-id="'.esc_attr($term_id).'">';
         echo '<span class="mv-sc-term-name">'.esc_html($term_obj->name).'</span>';
-        echo '<input type="text" class="mv-sc-term-label" name="mv_sc_cat_label['.esc_attr($term_id).']" value="'.esc_attr($label_value).'" placeholder="'.esc_attr($term_obj->name).'" />';
+        echo '<span class="mv-sc-term-label">'.esc_html($label).'</span>';
         echo '</li>';
     }
     echo '</ul>';
-
-    echo '<input type="hidden" id="mv_sc_cat_order_field" name="mv_sc_cat_order" value="'.esc_attr($initial_order).'" />';
-    echo '<input type="hidden" id="mv_sc_cat_reset_field" name="mv_sc_cat_reset" value="0" />';
-
-    echo '<p class="mv-sc-actions">';
-    echo '<button type="button" class="button" id="mv-sc-cat-reset">'.esc_html__('Restaurar por defecto', 'manaslu').'</button> ';
-    echo '<span class="description">'.esc_html__('Los cambios se guardan al actualizar el producto.', 'manaslu').'</span>';
-    echo '</p>';
 
     echo '</div></div>';
 });
@@ -844,25 +860,10 @@ add_action('woocommerce_admin_process_product_object', function ($product) {
         return !$is_seg && !$is_ind && !$is_per;
     }));
 
-    $sc_order_raw  = isset($_POST['mv_sc_cat_order']) ? wp_unslash($_POST['mv_sc_cat_order']) : '';
-    $sc_labels_raw = isset($_POST['mv_sc_cat_label']) && is_array($_POST['mv_sc_cat_label']) ? wp_unslash($_POST['mv_sc_cat_label']) : [];
-    $sc_reset_flag = !empty($_POST['mv_sc_cat_reset']);
-
-    $has_sc_payload = $sc_reset_flag;
-    if (!$has_sc_payload && $sc_order_raw !== '') {
-        $has_sc_payload = true;
-    }
-    if (!$has_sc_payload && !empty($sc_labels_raw)) {
-        foreach ($sc_labels_raw as $raw_label) {
-            if (trim((string)$raw_label) !== '') {
-                $has_sc_payload = true;
-                break;
-            }
-        }
-    }
-
     $has_fecha_post = isset($_POST['_viaje_fechas_extras']) && is_array($_POST['_viaje_fechas_extras']);
-    if (empty($reg) && empty($sal) && empty($seg_sin) && empty($seg_con) && empty($seg_link_sin) && empty($seg_link_con) && !$has_fecha_post && !$has_sc_payload) return;
+    delete_post_meta($product->get_id(), 'mv_sc_extra_cat_order');
+    delete_post_meta($product->get_id(), 'mv_sc_extra_cat_labels');
+    if (empty($reg) && empty($sal) && empty($seg_sin) && empty($seg_con) && empty($seg_link_sin) && empty($seg_link_con) && !$has_fecha_post) return;
 
     $map = [];
     $all_ids = array_unique(array_merge(
@@ -934,10 +935,10 @@ add_action('woocommerce_admin_process_product_object', function ($product) {
                 $title = strtolower(trim(get_the_title($eid)));
                 $is_adult = (strpos($title, 'adult') !== false);
                 $is_child = (strpos($title, 'niñ') !== false) || (strpos($title, 'child') !== false) || (strpos($title, 'kids') !== false);
-                $included = !empty($vals['included']) ? 1 : 0;
+                $included = (!empty($vals['included']) && !$is_adult) ? 1 : 0;
                 if ($is_adult) {
                     $val = (float)$base; // Adulto = precio base de la fecha
-                    $by_idx[$idx][$eid] = ['regular'=>$val,'sale'=>$val,'included'=>$included];
+                    $by_idx[$idx][$eid] = ['regular'=>$val,'sale'=>$val,'included'=>0];
                 } elseif ($is_child) {
                     $pct_val = isset($vals['pct']) && $vals['pct'] !== '' ? (float)$vals['pct'] : 0.0;
                     if ($pct_val < 0) $pct_val = 0.0; if ($pct_val > 100) $pct_val = 100.0;
@@ -948,7 +949,7 @@ add_action('woocommerce_admin_process_product_object', function ($product) {
                         $val = (float)wc_format_decimal($val);
                         $by_idx[$idx][$eid]['regular'] = $val;
                         $by_idx[$idx][$eid]['sale']    = $val;
-                        $by_idx[$idx][$eid]['included'] = $included;
+                        $by_idx[$idx][$eid]['included'] = 0;
                         $by_idx[$idx][$eid]['pct']      = $pct_val;
                         continue;
                     }
@@ -1005,7 +1006,7 @@ add_action('woocommerce_admin_process_product_object', function ($product) {
                                 $by_idx[$idx][$eid] = [
                                     'regular'  => $val,
                                     'sale'     => $val,
-                                    'included' => isset($by_idx[$idx][$eid]['included']) ? (int)$by_idx[$idx][$eid]['included'] : 0,
+                                    'included' => 0,
                                 ];
                             } else {
                                 // Niños u otros dentro de Personas: no prellenamos precio fijo.
@@ -1022,43 +1023,6 @@ add_action('woocommerce_admin_process_product_object', function ($product) {
         }
     }
 
-    if ($sc_reset_flag) {
-        delete_post_meta($product->get_id(), 'mv_sc_extra_cat_order');
-        delete_post_meta($product->get_id(), 'mv_sc_extra_cat_labels');
-    } else {
-        $order_ids = [];
-        if (is_string($sc_order_raw) && $sc_order_raw !== '') {
-            $chunks = array_filter(array_map('trim', explode(',', $sc_order_raw)), 'strlen');
-            foreach ($chunks as $chunk) {
-                $tid = absint($chunk);
-                if ($tid) $order_ids[] = $tid;
-            }
-            $order_ids = array_values(array_unique($order_ids));
-        }
-
-        if (!empty($order_ids)) {
-            update_post_meta($product->get_id(), 'mv_sc_extra_cat_order', $order_ids);
-        } else {
-            delete_post_meta($product->get_id(), 'mv_sc_extra_cat_order');
-        }
-
-        $labels_clean = [];
-        if (!empty($sc_labels_raw) && is_array($sc_labels_raw)) {
-            foreach ($sc_labels_raw as $term_id => $label) {
-                $term_id = absint($term_id);
-                $label = sanitize_text_field($label);
-                if ($term_id && $label !== '') {
-                    $labels_clean[$term_id] = $label;
-                }
-            }
-        }
-
-        if (!empty($labels_clean)) {
-            update_post_meta($product->get_id(), 'mv_sc_extra_cat_labels', $labels_clean);
-        } else {
-            delete_post_meta($product->get_id(), 'mv_sc_extra_cat_labels');
-        }
-    }
 }, 999); // high priority to run after other meta savers (merge Niños % into _viaje_fechas_extras)
 
 /* ============================================================
@@ -1345,6 +1309,10 @@ function mv_ajax_extra_add(){
         if ($included_flag > 0) {
             $current_included = max($current_included, (int)$included_flag);
         }
+        if ($included_flag <= 0 && $current_included > 0) {
+            $current_included = 0;
+            $map[$eid]['included'] = 0;
+        }
 
         $current_qty = max(0, (int)($map[$eid]['qty'] ?? 0));
         if ($current_included > 0 && $current_qty < $current_included) {
@@ -1390,7 +1358,7 @@ function mv_ajax_extra_add(){
         ]);
     }
 
-    wp_send_json_error(['message'=>'Cart line not found']);
+    wp_send_json_error(['message'=>__('Debes seleccionar una fecha primero.', 'manaslu')]);
 }
 
 add_action('wp_ajax_viaje_extra_sub', 'mv_ajax_extra_sub');
@@ -1446,6 +1414,10 @@ function mv_ajax_extra_sub(){
         if ($baseline > 0) {
             $current_included = max($current_included, (int)$baseline);
         }
+        if ($baseline <= 0 && $current_included > 0) {
+            $current_included = 0;
+            $map[$eid]['included'] = 0;
+        }
 
         $current_qty = max(0, (int)($map[$eid]['qty'] ?? 0));
         if ($current_included > 0 && $current_qty < $current_included) {
@@ -1474,7 +1446,7 @@ function mv_ajax_extra_sub(){
         ]);
     }
 
-    wp_send_json_error(['message'=>'Cart line not found']);
+    wp_send_json_error(['message'=>__('Debes seleccionar una fecha primero.', 'manaslu')]);
 }
 // >>> Seguro de Viaje: set (on/off + variante) — mantiene precio por producto
 add_action('wp_ajax_viaje_seguro_set', 'mv_ajax_seguro_set');
@@ -1787,6 +1759,9 @@ add_shortcode('viaje_extras', function($atts = []){
 
     $groups = [];
     foreach ($assigned as $eid) {
+        if (function_exists('mv_is_seguro_extra') && mv_is_seguro_extra($eid)) {
+            continue;
+        }
         $terms = get_the_terms($eid, 'extra_category');
         if (!$terms || is_wp_error($terms)) {
             $key = 'uncat';
@@ -1807,62 +1782,67 @@ add_shortcode('viaje_extras', function($atts = []){
     }
     if (empty($groups)) return '';
 
-    $stored_order = get_post_meta($pid, 'mv_sc_extra_cat_order', true);
-    $stored_order = is_array($stored_order) ? array_values(array_map('absint', $stored_order)) : [];
-    $stored_labels = get_post_meta($pid, 'mv_sc_extra_cat_labels', true);
-    $stored_labels = is_array($stored_labels) ? $stored_labels : [];
+    $desired_config = [
+        [
+            'slugs' => ['personas'],
+        ],
+        [
+            'slugs' => ['individual'],
+        ],
+        [
+            'slugs' => ['actividades'],
+        ],
+        [
+            'slugs' => ['transfers', 'transfer'],
+        ],
+    ];
+    $label_map = [
+        'personas'    => __('Personas', 'manaslu'),
+        'individual'  => __('Alojamiento', 'manaslu'),
+        'actividades' => __('Actividades - Precio por persona', 'manaslu'),
+        'transfers'   => __('Transfer - Precio por persona', 'manaslu'),
+        'transfer'    => __('Transfer - Precio por persona', 'manaslu'),
+    ];
 
-    // Orden de categorías: si se pasó category="", respeta ese orden; si no, alfabético
     $ordered = [];
     if ($cat_filter) {
         foreach ($cat_filter as $token) {
             foreach ($groups as $key => $g) {
-                $match = $g['term'] && ($g['term']->slug === $token || (string)$g['term']->term_id === (string)$token);
-                if ($match) { $ordered[$key] = $g; unset($groups[$key]); }
+                $term = $g['term'];
+                $match = $term && ($term->slug === $token || (string)$term->term_id === (string)$token);
+                if ($match) {
+                    $ordered[$key] = $g;
+                    unset($groups[$key]);
+                }
             }
         }
-        foreach ($groups as $key=>$g) { $ordered[$key] = $g; }
+        foreach ($groups as $key => $g) {
+            $ordered[$key] = $g;
+        }
     } else {
-        $ordered = $groups;
-        uasort($ordered, function($A,$B){
-            $an = $A['term'] ? $A['term']->name : 'Extras';
-            $bn = $B['term'] ? $B['term']->name : 'Extras';
-            return strcasecmp($an, $bn);
-        });
-    }
-
-    if (!empty($stored_order)) {
-        $reordered = [];
-        $term_index = [];
-        foreach ($ordered as $key => $g) {
-            if ($g['term']) {
-                $term_index[(int)$g['term']->term_id] = ['key' => $key, 'group' => $g];
+        $remaining = $groups;
+        foreach ($desired_config as $config) {
+            foreach ($config['slugs'] as $slug) {
+                foreach ($remaining as $key => $g) {
+                    $term_slug = $g['term'] ? $g['term']->slug : '';
+                    if ($term_slug === $slug) {
+                        $ordered[$key] = $g;
+                        unset($remaining[$key]);
+                        continue 3;
+                    }
+                }
             }
         }
-        foreach ($stored_order as $term_id) {
-            $term_id = (int)$term_id;
-            if (isset($term_index[$term_id])) {
-                $entry = $term_index[$term_id];
-                $reordered[$entry['key']] = $entry['group'];
-                unset($term_index[$term_id]);
-            }
-        }
-        if (!empty($term_index)) {
-            uasort($term_index, function($a, $b){
-                $nameA = $a['group']['term'] ? $a['group']['term']->name : '';
-                $nameB = $b['group']['term'] ? $b['group']['term']->name : '';
-                return strcasecmp($nameA, $nameB);
+        if (!empty($remaining)) {
+            uasort($remaining, function($A,$B){
+                $an = $A['term'] ? $A['term']->name : 'Extras';
+                $bn = $B['term'] ? $B['term']->name : 'Extras';
+                return strcasecmp($an, $bn);
             });
-            foreach ($term_index as $entry) {
-                $reordered[$entry['key']] = $entry['group'];
+            foreach ($remaining as $key => $g) {
+                $ordered[$key] = $g;
             }
         }
-        foreach ($ordered as $key => $g) {
-            if (!isset($reordered[$key])) {
-                $reordered[$key] = $g;
-            }
-        }
-        $ordered = $reordered;
     }
 
     $nonce = wp_create_nonce('mv_extras_nonce');
@@ -1870,6 +1850,17 @@ add_shortcode('viaje_extras', function($atts = []){
 
     // Índice de FECHA seleccionada (para mostrar precio correcto en la UI)
     $idxSel = function_exists('WC') && WC()->cart ? mv_cart_selected_idx_for_product($pid) : -1;
+    $used_fallback_idx = false;
+    if ($idxSel < 0 && function_exists('mv_get_fechas')) {
+        $fechas = mv_get_fechas($pid);
+        if (is_array($fechas) && !empty($fechas)) {
+            $keys = array_keys($fechas);
+            if (!empty($keys)) {
+                $idxSel = (int) reset($keys);
+                $used_fallback_idx = true;
+            }
+        }
+    }
 
     $render_groups = [];
     foreach ($ordered as $gid => $g) {
@@ -1883,6 +1874,12 @@ add_shortcode('viaje_extras', function($atts = []){
             $title = get_the_title($eid);
             $qty   = function_exists('WC') && WC()->cart ? mv_cart_qty_for_extra($pid, $eid) : 0;
             $base_inc = function_exists('mv_extra_base_included') ? mv_extra_base_included($pid, $eid, $idxSel) : 0;
+            if ($used_fallback_idx) {
+                $title_lower = strtolower(trim($title));
+                if (strpos($title_lower, 'adult') !== false) {
+                    $base_inc = 0;
+                }
+            }
             $effective_qty = max((int)$qty, (int)$base_inc);
 
             $items[] = [
@@ -1913,9 +1910,9 @@ add_shortcode('viaje_extras', function($atts = []){
         $num = $start + $index;
         $term_label = '';
         if ($group['term']) {
-            $tid = (int)$group['term']->term_id;
-            if (!empty($stored_labels[$tid])) {
-                $term_label = sanitize_text_field($stored_labels[$tid]);
+            $slug = $group['term']->slug;
+            if (isset($label_map[$slug])) {
+                $term_label = $label_map[$slug];
             }
         }
         $display_name = $term_label !== '' ? $term_label : ($group['term'] ? $group['term']->name : __('Extras','manaslu'));
@@ -1955,12 +1952,29 @@ add_shortcode('viaje_extra', function($atts = []){
 
     // FECHA seleccionada (para precio correcto en UI)
     $idxSel = function_exists('WC') && WC()->cart ? mv_cart_selected_idx_for_product($pid) : -1;
+    $used_fallback_idx = false;
+    if ($idxSel < 0 && function_exists('mv_get_fechas')) {
+        $fechas = mv_get_fechas($pid);
+        if (is_array($fechas) && !empty($fechas)) {
+            $keys = array_keys($fechas);
+            if (!empty($keys)) {
+                $idxSel = (int) reset($keys);
+                $used_fallback_idx = true;
+            }
+        }
+    }
 
     $title = get_the_title($eid);
     $price = (float) mv_product_extra_price_for_idx($pid, $eid, $idxSel);
     if ($price <= 0) return '';
     $qty   = function_exists('WC') && WC()->cart ? mv_cart_qty_for_extra($pid, $eid) : 0;
     $base_inc = function_exists('mv_extra_base_included') ? mv_extra_base_included($pid, $eid, $idxSel) : 0;
+    if ($used_fallback_idx) {
+        $title_lower = strtolower(trim($title));
+        if (strpos($title_lower, 'adult') !== false) {
+            $base_inc = 0;
+        }
+    }
     $effective_qty = max((int)$qty, (int)$base_inc);
     $inc_note = '';
     if ($base_inc > 0) {
@@ -2095,6 +2109,15 @@ function mv_ajax_viaje_extra_prices(){
     $assigned = is_array($assigned) ? array_map('intval', $assigned) : [];
 
     $idx = function_exists('mv_cart_selected_idx_for_product') ? mv_cart_selected_idx_for_product($pid) : -1;
+    if ($idx < 0 && function_exists('mv_get_fechas')) {
+        $fechas = mv_get_fechas($pid);
+        if (is_array($fechas) && !empty($fechas)) {
+            $keys = array_keys($fechas);
+            if (!empty($keys)) {
+                $idx = (int) reset($keys);
+            }
+        }
+    }
 
     $prices = [];
     foreach ($assigned as $eid) {

@@ -59,6 +59,10 @@ add_action('template_redirect', function(){
     if (is_admin() || wp_doing_ajax()) return;
     if (!function_exists('WC')) return;
 
+    if (function_exists('wc_load_cart')) {
+        wc_load_cart();
+    }
+
     $wc_session = WC()->session;
     $cart = WC()->cart;
     if (!$wc_session || !$cart) return;
@@ -78,4 +82,9 @@ add_action('template_redirect', function(){
 
     $wc_session->__unset($session_flag);
     $cart->empty_cart();
+    $cart->set_session();
+    $cart->calculate_totals();
+    if (method_exists($wc_session, 'save_data')) {
+        $wc_session->save_data();
+    }
 });

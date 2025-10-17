@@ -83,7 +83,7 @@ if (!function_exists('manaslu_checkout_validate_required_inputs')) {
         }
 
         if (empty($_POST['mv_accept_terms'])) {
-            wc_add_notice(__('Debes aceptar las condiciones del viaje.', 'manaslu'), 'error');
+            wc_add_notice(__('Debes aceptar las políticas de privacidad y cancelación.', 'manaslu'), 'error');
         }
     }
 }
@@ -223,7 +223,7 @@ if (!function_exists('manaslu_checkout_terms_markup')) {
             <div class="mvcf-checkbox">
                 <label class="mvcf-checkbox-label">
                     <input type="checkbox" name="mv_accept_terms" value="1" required />
-                    <span><?php echo esc_html__('Acepta las condiciones del viaje, políticas generales de cancelación y tratamiento de imágenes', 'manaslu'); ?></span>
+                    <span><?php echo esc_html__('Acepto las políticas de privacidad y cancelación.', 'manaslu'); ?></span>
                 </label>
             </div>
         </section>
@@ -234,21 +234,30 @@ if (!function_exists('manaslu_checkout_terms_markup')) {
 
 if (!function_exists('manaslu_checkout_prepend_terms_to_privacy_text')) {
     /**
-     * Inserta el checkbox de aceptación antes del texto legal del checkout.
+     * Deja el texto legal tal cual. El checkbox personalizado se imprime como elemento separado
+     * para poder posicionarlo visualmente por encima usando flex order.
      */
     function manaslu_checkout_prepend_terms_to_privacy_text(string $text): string
     {
-        $terms_html = manaslu_checkout_terms_markup();
-
-        if ($terms_html === '' || strpos($text, 'name="mv_accept_terms"') !== false) {
-            return $text;
-        }
-
-        return $terms_html . $text;
+        // No inyectamos el checkbox aquí porque Woo envuelve este texto en un <p>.
+        // Eso impide ordenarlo como un ítem flex independiente en .place-order.
+        return $text;
     }
 }
 
 add_filter('woocommerce_checkout_privacy_policy_text', 'manaslu_checkout_prepend_terms_to_privacy_text', 5);
+
+if (!function_exists('manaslu_checkout_insert_terms_before_legal')) {
+    /**
+     * Imprime el checkbox de aceptación como un elemento hermano dentro de `.place-order`,
+     * antes del texto legal, para que el CSS pueda ordenarlo arriba.
+     */
+    function manaslu_checkout_insert_terms_before_legal(): void
+    {
+        echo manaslu_checkout_terms_markup(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+    }
+}
+add_action('woocommerce_review_order_before_submit', 'manaslu_checkout_insert_terms_before_legal', 5);
 
 $is_user_logged_in = is_user_logged_in();
 
@@ -930,7 +939,7 @@ $inline_styles = trim(<<<'CSS'
 }
 CSS);
 
-$inline_script = trim(<<<'JS'
+ $inline_script = trim(<<<'JS'
 (function () {
     function initCheckoutForm(form) {
         var wrapper = form.querySelector('[data-travelers-wrapper]');
@@ -1110,11 +1119,59 @@ $inline_script = trim(<<<'JS'
         ensureCardCount(initial);
     }
 
+    // Helper to ensure the terms section is always present and re-injected as needed
+    function ensureTermsSection() {
+        var payment = document.getElementById('payment');
+        if (!payment) return;
+        var placeOrder = payment.querySelector('.place-order');
+        if (!placeOrder) return;
+
+        if (!placeOrder.querySelector('.mvcf-section--terms')) {
+            var section = document.createElement('section');
+            section.className = 'mvcf-section mvcf-section--terms';
+            section.setAttribute('data-mv-terms', '');
+
+            var inner = document.createElement('div');
+            inner.className = 'mvcf-checkbox';
+            var label = document.createElement('label');
+            label.className = 'mvcf-checkbox-label';
+            var input = document.createElement('input');
+            input.type = 'checkbox';
+            input.name = 'mv_accept_terms';
+            input.value = '1';
+            input.required = true;
+            var span = document.createElement('span');
+            span.textContent = 'Acepto las políticas de privacidad y cancelación.';
+            label.appendChild(input);
+            label.appendChild(span);
+            inner.appendChild(label);
+            section.appendChild(inner);
+
+            var legalWrapper = placeOrder.querySelector('.woocommerce-terms-and-conditions-wrapper');
+            if (legalWrapper) {
+                placeOrder.insertBefore(section, legalWrapper);
+            } else {
+                var legalText = placeOrder.querySelector('.woocommerce-privacy-policy-text');
+                if (legalText) {
+                    placeOrder.insertBefore(section, legalText);
+                } else {
+                    placeOrder.insertBefore(section, placeOrder.firstChild);
+                }
+            }
+        }
+    }
+
+    // Reinyectar el checkbox cuando WooCommerce refresca los fragmentos del checkout
+    if (window.jQuery && jQuery(document.body).on) {
+        jQuery(document.body).on('updated_checkout', ensureTermsSection);
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         var forms = document.querySelectorAll('.manaslu-checkout-form');
         forms.forEach(function (form) {
             initCheckoutForm(form);
         });
+        ensureTermsSection();
     });
 })();
 JS);

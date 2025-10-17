@@ -840,7 +840,6 @@ add_action('admin_head', function(){ ?>
 <style>
 /* Asegura que los checkboxes 'Incluye' en Fecha > Extras sean visibles, sin hacks de ocultamiento */
 .woocommerce_options_panel input.mv-inc[type="checkbox"]{
-  display:inline-block !important;
   width:auto !important;
   height:auto !important;
   opacity:1 !important;
