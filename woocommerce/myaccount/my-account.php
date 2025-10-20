@@ -26,9 +26,9 @@ if (!did_action('manaslu_myaccount_styles_printed')) {
     <style>
         :root {
             --mva-surface: #ffffff;
-            --mva-surface-alt: #f5f7fb;
+            --mva-surface-alt: #fef2f4;
             --mva-border: rgba(15, 23, 42, 0.08);
-            --mva-primary: #1f3c88;
+            --mva-primary: #e3172d;
             --mva-text: #111827;
             --mva-text-muted: #4b5563;
             --mva-radius-lg: 18px;
@@ -37,7 +37,7 @@ if (!did_action('manaslu_myaccount_styles_printed')) {
         }
 
         .mva-account {
-            background: linear-gradient(135deg, #eef2ff, #fff);
+            background: rgb(241, 241, 241);
             padding: clamp(2rem, 4vw, 4rem) clamp(1.5rem, 4vw, 4rem);
             color: var(--mva-text);
         }
@@ -115,7 +115,7 @@ if (!did_action('manaslu_myaccount_styles_printed')) {
 
         .mva-account__content .woocommerce-orders-table thead th,
         .mva-account__content .woocommerce-MyAccount-paymentMethods thead th {
-            background: rgba(31, 60, 136, 0.12);
+            background: rgba(227, 23, 45, 0.12);
             color: var(--mva-text);
             font-size: 0.85rem;
             font-weight: 600;
@@ -134,7 +134,7 @@ if (!did_action('manaslu_myaccount_styles_printed')) {
 
         .mva-account__content .woocommerce-orders-table tr:hover,
         .mva-account__content .woocommerce-MyAccount-paymentMethods tbody tr:hover {
-            background: rgba(31, 60, 136, 0.08);
+            background: rgba(227, 23, 45, 0.06);
         }
 
         .mva-account__content .woocommerce-orders-table a.button,
@@ -151,7 +151,7 @@ if (!did_action('manaslu_myaccount_styles_printed')) {
         .mva-account__content .woocommerce-orders-table a.button:hover,
         .mva-account__content .woocommerce-MyAccount-paymentMethods a.button:hover {
             transform: translateY(-1px);
-            box-shadow: 0 10px 24px -20px rgba(31, 60, 136, 0.85);
+            box-shadow: 0 10px 24px -20px rgba(227, 23, 45, 0.6);
         }
 
         .mva-account__content mark.order-status {
@@ -163,7 +163,7 @@ if (!did_action('manaslu_myaccount_styles_printed')) {
             border-radius: 999px;
             font-size: 0.8rem;
             text-transform: capitalize;
-            background: rgba(31, 60, 136, 0.12);
+            background: rgba(227, 23, 45, 0.12);
             color: var(--mva-primary);
         }
 

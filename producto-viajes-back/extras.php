@@ -355,9 +355,11 @@ add_action('admin_head', function(){ ?>
 .widefat thead tr th:nth-child(4){
     display: none !important;
 }
+
 .woocommerce_options_panel input.mv-inc[type="checkbox"]{
     display: none !important;
 }
+
 /* Oculta checkboxes "Incluye" en extras y repetidor de fechas */
 #mv_extras_data .mv-inc[type="checkbox"],
 #mv_fechas_data .mv-inc[type="checkbox"]{

@@ -132,7 +132,7 @@ if (!$upcoming_message) {
     }
 
     .mva-dashboard__card--accent {
-        background: linear-gradient(135deg, rgba(31, 60, 136, 0.1), rgba(31, 60, 136, 0.3));
+        background: linear-gradient(135deg, rgba(227, 23, 45, 0.08), rgba(227, 23, 45, 0.25));
         color: var(--mva-text);
     }
 
@@ -184,7 +184,7 @@ if (!$upcoming_message) {
     .mva-dashboard__cta:hover,
     .mva-dashboard__cta:focus {
         transform: translateY(-1px);
-        box-shadow: 0 10px 25px -15px rgba(31, 60, 136, 0.6);
+        box-shadow: 0 10px 25px -15px rgba(227, 23, 45, 0.5);
     }
 
     .mva-dashboard__cta:focus-visible {
