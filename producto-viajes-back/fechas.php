@@ -555,9 +555,14 @@ add_shortcode('viaje_fechas', function($atts){
         $mode = 'redirect';
     }
     // Si estamos en la página comprando-viaje, forzar modo AJAX
-    if (get_query_var('pagename') === 'comprando-viaje' || (function_exists('is_page') && is_page('comprando-viaje'))) {
+    $is_comprando_page = (get_query_var('pagename') === 'comprando-viaje')
+        || (function_exists('is_page') && is_page('comprando-viaje'))
+        || (function_exists('mv_checkout_is_comprando_page') && mv_checkout_is_comprando_page());
+    if ($is_comprando_page) {
         $mode = 'ajax';
     }
+
+    $force_zero_base = $is_comprando_page ? 1 : 0;
 
     $go_base = ($mode === 'redirect') ? mv_get_comprando_viaje_url($pid) : '';
 
@@ -566,10 +571,12 @@ add_shortcode('viaje_fechas', function($atts){
          data-pid="<?php echo esc_attr($pid);?>"
          data-mode="<?php echo esc_attr($mode);?>"
          data-go-base="<?php echo esc_attr($go_base);?>"
+         data-force-zero="<?php echo esc_attr($force_zero_base);?>"
          data-initial-idx="<?php echo esc_attr($initial_idx >= 0 ? $initial_idx : ''); ?>">
         <?php foreach ($fechas as $i=>$row):
             $regular = isset($row['precio_normal']) ? (float)$row['precio_normal'] : 0;
             $sale    = isset($row['precio_rebajado']) ? (float)$row['precio_rebajado'] : 0;
+            $has_sale = ($sale > 0 && ($regular == 0 || $sale < $regular));
             $price_base = $regular > 0 ? $regular : ($sale > 0 ? $sale : 0); // se mostrará abajo
             $price_html = $price_base > 0 ? wc_price($price_base) : '';
             $disp    = mv_available_for_idx($pid, $i, $row);
@@ -578,6 +585,8 @@ add_shortcode('viaje_fechas', function($atts){
             $included_map = mv_collect_included_extras_for_date($pid, $i);
             $included_ids = array_keys($included_map);
             $data_included_attr = esc_attr(implode(',', $included_ids));
+            $price_classes = ['mv-price'];
+            $price_classes[] = $has_sale ? 'mv-price--has-sale' : 'mv-price--no-sale';
         ?>
         <div class="mv-card <?php echo $is_sel?'is-selected':'';?> <?php echo $cerrado?'is-closed':'';?>"
      data-idx="<?php echo esc_attr($i);?>"
@@ -597,8 +606,8 @@ add_shortcode('viaje_fechas', function($atts){
                 </div>
             </div>
 
-            <div class="mv-price">
-                <?php if ($sale > 0 && ($regular == 0 || $sale < $regular)): ?>
+            <div class="<?php echo esc_attr(implode(' ', array_unique($price_classes))); ?>">
+                <?php if ($has_sale): ?>
                     <div class="mv-price-sale"><?php echo wc_price($sale); ?></div>  <!-- arriba: precio con descuento -->
                 <?php endif; ?>
                 <?php if ($price_html): ?>
@@ -621,7 +630,7 @@ add_shortcode('viaje_fechas', function($atts){
                     <button class="mv-btn mv-btn-gray" type="button" disabled><?php esc_html_e('GRUPO LLENO','manaslu');?></button>
                 <?php else: ?>
                     <button class="mv-btn <?php echo $is_sel?'mv-btn-green':'mv-btn-red';?> mv-pick" type="button">
-                        <?php echo $is_sel?esc_html__('SELECCIONADA ✓','manaslu'):esc_html__('ESCOGER FECHA','manaslu'); ?>
+                        <?php echo $is_sel?esc_html__('SELECCIONADO ✓','manaslu'):esc_html__('ESCOGER FECHA','manaslu'); ?>
                     </button>
                 <?php endif; ?>
             </div>
@@ -655,6 +664,21 @@ function mv_ajax_pick_date(){
             WC()->cart->remove_cart_item($key);
         }
     }
+    // Marcar si el flujo actual es /comprando-viaje/ para dejar precio base en cero
+    $zero_base = false;
+    if (WC()->session) {
+        $flow_flag = WC()->session->get('mv_on_comprando_flow');
+        if (in_array($flow_flag, ['yes', '1', 1, true], true)) {
+            $zero_base = true;
+        }
+    }
+    if (!$zero_base && isset($_POST['force_zero_base'])) {
+        $raw_force = sanitize_text_field(wp_unslash($_POST['force_zero_base']));
+        if ($raw_force !== '') {
+            $zero_base = in_array(strtolower($raw_force), ['1','yes','true','on'], true);
+        }
+    }
+
     // añadir
     $data = ['viaje_fecha'=>[
         'idx'=>$idx,
@@ -664,8 +688,22 @@ function mv_ajax_pick_date(){
         'precio_rebajado'=>$fechas[$idx]['precio_rebajado'] ?? '',
         'concepto'=>$fechas[$idx]['concepto'] ?? '',
     ]];
+    if ($zero_base) {
+        $data['viaje_zero_base'] = 1;
+    }
     $added_key = WC()->cart->add_to_cart($pid, $qty, 0, [], $data);
     if (!$added_key) wp_send_json_error(['message'=>__('No se pudo añadir al carrito','manaslu')]);
+
+    if ($zero_base && isset(WC()->cart->cart_contents[$added_key])) {
+        WC()->cart->cart_contents[$added_key]['viaje_zero_base'] = 1;
+        if (isset(WC()->cart->cart_contents[$added_key]['data']) && is_object(WC()->cart->cart_contents[$added_key]['data'])) {
+            WC()->cart->cart_contents[$added_key]['data']->set_price(0);
+        }
+        WC()->cart->cart_contents[$added_key]['line_subtotal'] = 0;
+        WC()->cart->cart_contents[$added_key]['line_total'] = 0;
+        WC()->cart->cart_contents[$added_key]['line_subtotal_tax'] = 0;
+        WC()->cart->cart_contents[$added_key]['line_tax'] = 0;
+    }
 
     // Construir mapa de extras incluidos (clave => cantidad base)
     $included_map = mv_collect_included_extras_for_date($pid, $idx);
@@ -741,6 +779,18 @@ add_filter('woocommerce_add_cart_item_data', function ($cart_item_data, $product
             ];
         }
     }
+    if (function_exists('WC') && WC()->session && empty($cart_item_data['viaje_zero_base'])) {
+        $flow_flag = WC()->session->get('mv_on_comprando_flow');
+        if (in_array($flow_flag, ['yes', '1', 1, true], true)) {
+            $cart_item_data['viaje_zero_base'] = 1;
+        }
+    }
+    if (empty($cart_item_data['viaje_zero_base']) && isset($_REQUEST['viaje_zero_base'])) {
+        $raw_force = sanitize_text_field(wp_unslash($_REQUEST['viaje_zero_base']));
+        if ($raw_force !== '' && in_array(strtolower($raw_force), ['1','yes','true','on'], true)) {
+            $cart_item_data['viaje_zero_base'] = 1;
+        }
+    }
     return $cart_item_data;
 },10,2);
 
@@ -756,13 +806,28 @@ add_filter('woocommerce_get_item_data', function($item_data,$cart_item){
 
 add_action('woocommerce_before_calculate_totals', function($cart){
     if (is_admin() && !defined('DOING_AJAX')) return;
-    foreach ($cart->get_cart() as $ci) {
-        if (!empty($ci['viaje_fecha']) && isset($ci['data']) && is_object($ci['data'])) {
-            $vf=$ci['viaje_fecha'];
-            $regular= isset($vf['precio_normal']) ? (float)$vf['precio_normal'] : 0;
-            $sale   = isset($vf['precio_rebajado']) ? (float)$vf['precio_rebajado'] : 0;
-            $price  = ($sale>0 && ($regular==0 || $sale<$regular)) ? $sale : $regular;
-            if ($price>0) $ci['data']->set_price($price);
+    foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
+        if (empty($cart_item['viaje_fecha']) || !isset($cart_item['data']) || !is_object($cart_item['data'])) {
+            continue;
+        }
+
+        if (!empty($cart_item['viaje_zero_base'])) {
+            $cart_item['data']->set_price(0);
+            if (isset($cart->cart_contents[$cart_item_key])) {
+                $cart->cart_contents[$cart_item_key]['line_subtotal'] = 0;
+                $cart->cart_contents[$cart_item_key]['line_total'] = 0;
+                $cart->cart_contents[$cart_item_key]['line_subtotal_tax'] = 0;
+                $cart->cart_contents[$cart_item_key]['line_tax'] = 0;
+            }
+            continue;
+        }
+
+        $vf = $cart_item['viaje_fecha'];
+        $regular = isset($vf['precio_normal']) ? (float)$vf['precio_normal'] : 0;
+        $sale    = isset($vf['precio_rebajado']) ? (float)$vf['precio_rebajado'] : 0;
+        $price   = ($sale>0 && ($regular==0 || $sale<$regular)) ? $sale : $regular;
+        if ($price>0) {
+            $cart_item['data']->set_price($price);
         }
     }
 },20);
@@ -815,7 +880,7 @@ add_action('wp_head', function(){ ?>
 /* Tipografía solicitada */
 @font-face{font-family:"Host Grotesk";font-style:normal;font-weight:400;src:local("Host Grotesk"), local("HostGrotesk");}
 .mv-fechas{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;margin:10px 0;}
-.mv-card{border:1px solid #e8e8e8;border-radius:10px;padding:16px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.05);font-family:"Host Grotesk",system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#000;}
+.mv-card{border:1px solid #e8e8e8;border-radius:10px;padding:16px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.05);font-family:"Host Grotesk",system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#000;display:flex;flex-direction:column;height:100%;}
 .mv-card.is-selected{border-color:#21a65b;box-shadow:0 0 0 2px #21a65b33;}
 .mv-badge{font-size:12px;font-weight:700;color:#e3172d;margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px;}
 .mv-dates{display:flex;flex-direction:column;gap:2px;margin-bottom:6px;}
@@ -823,10 +888,13 @@ add_action('wp_head', function(){ ?>
 .mv-date-value{font-size:16px;font-weight:800;letter-spacing:.3px;}
 .mv-price{margin:6px 0 10px;}
 .mv-price-label{font-size:12px;font-weight:700;margin-right:4px;color:#000;}
-.mv-price-amount{font-size:16px;font-weight:800;}
+.mv-price-amount{font-size:16px !important;font-weight:700 !important;}
+.mv-price-sale{font-size:16px;font-weight:700;}
+.mv-price--has-sale .mv-price-amount{font-size:14px !important;font-weight:400 !important;text-decoration:line-through;}
+.mv-price--no-sale .mv-price-amount{font-size:16px;font-weight:700;text-decoration:none;}
 .mv-stock{font-size:13px;margin-bottom:12px;}
 .mv-nocapacity{color:#999;}
-.mv-actions{text-align:left}
+.mv-actions{text-align:left;margin-top:auto;}
 .mv-btn{border:none;border-radius:999px;padding:10px 18px;font-weight:700;cursor:pointer;color:#fff}
 .mv-btn-red{background:#e3172d;}
 .mv-btn-green{background:#21a65b;}
@@ -861,6 +929,7 @@ add_action('wp_footer', function(){ ?>
   ready(function(){
     document.querySelectorAll('.mv-fechas').forEach(function(grid){
       var pid = grid.getAttribute('data-pid');
+      var forceZero = grid.getAttribute('data-force-zero') === '1';
 
       function refreshExtraPrices(){
         var fd = new FormData();
@@ -941,6 +1010,9 @@ add_action('wp_footer', function(){ ?>
         data.append('pid', pid);
         data.append('idx', idx);
         data.append('qty', 1);
+        if (forceZero) {
+          data.append('force_zero_base', '1');
+        }
 
         fetch('<?php echo esc_js(admin_url('admin-ajax.php')); ?>', {method:'POST', credentials:'same-origin', body:data})
           .then(r=>r.json())
@@ -955,7 +1027,7 @@ add_action('wp_footer', function(){ ?>
 
               card.classList.add('is-selected');
               if(btn){
-                btn.textContent = '<?php echo esc_js(__('SELECCIONADA ✓','manaslu'));?>';
+                btn.textContent = '<?php echo esc_js(__('SELECCIONADO ✓','manaslu'));?>';
                 btn.classList.remove('mv-btn-red'); btn.classList.add('mv-btn-green');
               }
 
@@ -982,6 +1054,9 @@ add_action('wp_footer', function(){ ?>
         if (!goBase) return;
         var sep = goBase.indexOf('?') === -1 ? '?' : '&';
         var target = goBase + sep + 'viaje_fecha_idx=' + encodeURIComponent(idx);
+        if (forceZero) {
+          target += '&viaje_zero_base=1';
+        }
         window.location.href = target;
       }
 

@@ -235,7 +235,7 @@ function mv_tooltips_css() {
     height: 18px;
     margin-left: 6px;
     border-radius: 50%;
-    background: #0b5f8a;
+    background: black;
     color: #fff;
     font-size: 12px;
     font-weight: 600;
@@ -254,7 +254,7 @@ function mv_tooltips_css() {
     top: 50%;
     left: calc(100% + 8px);
     transform: translateY(-50%) translateY(4px);
-    background: #0b5f8a;
+    background: black;
     color: #fff;
     padding: 8px 10px;
     border-radius: 4px;
