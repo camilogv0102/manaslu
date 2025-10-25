@@ -165,12 +165,16 @@ if (count($viajes) == 1 && isset($viajes[0]['inicio'])) {
 			//print_r($viajes);
 			
 			
-			 $all_categories = get_the_terms( get_the_ID(), 'product_cat' );
-			 foreach ($all_categories as $cat) {
-				 if ( $cat->parent == 639 ) { //Tipo de viaje
-				 	$cat = $cat->name;
-				 }
-			 }
+                $trip_type = '';
+                $terms = get_the_terms( get_the_ID(), 'product_cat' );
+                if ( ! is_wp_error( $terms ) && is_array( $terms ) ) {
+                    foreach ( $terms as $term ) {
+                        if ( (int) $term->parent === 639 ) { // Tipo de viaje
+                            $trip_type = $term->name;
+                            break;
+                        }
+                    }
+                }
 		
 			$html .= '<div class="trip_">';
 				$html .= '<div class="img_" style=\'background-image:url("'.get_the_post_thumbnail_url().'")\'>';
@@ -183,7 +187,9 @@ if (count($viajes) == 1 && isset($viajes[0]['inicio'])) {
                 $html .= '<div class="price_">Desde '.$precio_gancho.' o '.$precio_dividido.'/mes</div>';
                 $html .= '<div class="detalles_t">Detalles:</div>';
                 $html .= '<div class="detalles_">';
-                $html .= '<div class="detalle_"><img src="https://staging.manasluadventures.com/wp-content/uploads/2025/09/ic_t.png"> '.$cat.'</div>';
+                if ( $trip_type !== '' ) {
+                    $html .= '<div class="detalle_"><img src="https://staging.manasluadventures.com/wp-content/uploads/2025/09/ic_t.png"> ' . $trip_type . '</div>';
+                }
                 $html .= '<div class="detalle_"><img style="max-width: 15px;" src="https://staging.manasluadventures.com/wp-content/uploads/2025/09/ic_p.png"> De '.$minimo_grupo.' a '.$maximo_grupo.' personas</div>';
 				if(isset($fecha)){ 
                 	$str = strtotime($fecha);
@@ -191,11 +197,15 @@ if (count($viajes) == 1 && isset($viajes[0]['inicio'])) {
                 	$html .= '<div class="detalle_"><img src="https://staging.manasluadventures.com/wp-content/uploads/2025/09/ic_cal.png"> '.$fecha.'</div>';		  
 				} else {
 							$fechas = 'Fechas: &#xa;';
-							foreach($viajes as $viaje){
-								$str = strtotime($viaje['inicio']);
-								$fecha_viaje = date('d \\d\\e F', $str);
-								$fechas .= '·'.$fecha_viaje.' &#xa;';
-							}
+							foreach ( $viajes as $viaje ) {
+                                if ( isset( $viaje['inicio'] ) && $viaje['inicio'] ) {
+                                    $str = strtotime( $viaje['inicio'] );
+                                    if ( $str ) {
+                                        $fecha_viaje = date('d \\d\\e F', $str);
+                                        $fechas .= '·' . $fecha_viaje . ' &#xa;';
+                                    }
+                                }
+                            }
 							$toolt = 'data-tooltip="'.$fechas.'"';
 							$html .= '<div class="detalle_" ><img src="https://staging.manasluadventures.com/wp-content/uploads/2025/09/ic_cal.png"> +1 fecha <div class="toolt" '.$toolt.'><img src="https://staging.manasluadventures.com/wp-content/uploads/2025/09/toolt.svg"></div> </div>';		
 					
